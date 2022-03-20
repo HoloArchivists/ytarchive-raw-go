@@ -9,6 +9,7 @@ import (
 
     "github.com/gofrs/flock"
     "github.com/lucas-clemente/quic-go/http3"
+    "github.com/mattn/go-colorable"
 
     "github.com/notpeko/ytarchive-raw-go/download"
     "github.com/notpeko/ytarchive-raw-go/log"
@@ -27,6 +28,7 @@ func printResult(logger *log.Logger, res *download.DownloadResult) {
 }
 
 func main() {
+    colorable.EnableColorsStdout(nil)
     parseArgs()
 
     if tempDir == "" {
