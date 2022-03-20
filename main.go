@@ -64,12 +64,14 @@ func main() {
     }
 
     muxer, err := merge.CreateBestMuxer(&merge.MuxerOptions {
-        DeleteSegments: !keepFiles,
-        FinalFile:      output,
-        FregData:       &fregData,
-        Logger:         log.New("muxer.0"),
-        OverwriteTemp:  overwriteTemp,
-        TempDir:        tempDir,
+        DeleteSegments:  !keepFiles,
+        FinalFile:       output,
+        FregData:        &fregData,
+        Logger:          log.New("muxer.0"),
+        Merger:          merger,
+        MergerArguments: mergerArgs,
+        OverwriteTemp:   overwriteTemp,
+        TempDir:         tempDir,
     })
     if err != nil {
         log.Fatalf("Unable to create muxer: %v", err)

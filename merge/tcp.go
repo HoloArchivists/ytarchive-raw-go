@@ -20,12 +20,23 @@ type TcpMuxer struct {
 }
 
 func CreateTcpMuxer(options *MuxerOptions) (Muxer, error) {
-    audioMerger, err := createTcpTask(options, "audio")
+    var bindAddress string
+    if addr, ok := options.getMergerArgument("tcp", "bind_address"); ok {
+        if net.ParseIP(addr) == nil {
+            return nil, fmt.Errorf("Invalid ip address '%s'", addr)
+        }
+        bindAddress = addr
+    } else {
+        bindAddress = "127.0.0.1"
+    }
+
+
+    audioMerger, err := createTcpTask(bindAddress, options, "audio")
     if err != nil {
         return nil, err
     }
 
-    videoMerger, err := createTcpTask(options, "video")
+    videoMerger, err := createTcpTask(bindAddress, options, "video")
     if err != nil {
         return nil, err
     }
@@ -64,8 +75,8 @@ type tcpTask struct {
     wg             sync.WaitGroup
 }
 
-func createTcpTask(options *MuxerOptions, which string) (*tcpTask, error) {
-    l, err := net.Listen("tcp", "127.0.0.1:0")
+func createTcpTask(bindAddress string, options *MuxerOptions, which string) (*tcpTask, error) {
+    l, err := net.Listen("tcp", net.JoinHostPort(bindAddress, "0"))
     if err != nil {
         return nil, fmt.Errorf("Unable to start listening: %v", err)
     }
@@ -102,6 +113,7 @@ func (t *tcpTask) Merge(status *segments.SegmentStatus) {
         t.logger.Errorf("Unable to accept connection: %v", err)
         return
     }
+    t.logger.Info("Got connection")
 
     misses := 0
     for {

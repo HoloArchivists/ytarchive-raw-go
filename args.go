@@ -33,6 +33,8 @@ var (
     input          string
     keepFiles      bool
     logLevel       string
+    merger         string
+    mergerArgs     = make(map[string]map[string]string)
     output         string
     overwriteTemp  bool
     queue          string
@@ -78,6 +80,26 @@ Options:
         --log-level LEVEL
                 Log level to use (debug, info, warn, error, fatal).
                 Default is 'info'
+
+        --merger NAME
+                Selects which merger should be used. Currently implemented
+                mergers are 'tcp' and 'concat'.
+
+                If empty, the tcp merger is used if ffmpeg supports tcp://
+                inputs, otherwise the concat merger is used.
+
+        --merger-argument NAME:KEY=VALUE
+                Passes an argument to a merger. This option takes a single
+                key-value pair, and can be used multiple times to pass
+                multiple arguments. Only the first occurences of the : and =
+                characters are treated specially, the value is allowed to
+                include those characters.
+
+                Supported arguments:
+                    tcp merger:
+                        bind_address=<ip address>
+
+                See examples below for an example.
 
         -o, --output TEMPLATE
                 Output file name EXCLUDING THE EXTENSION. Can include
@@ -141,6 +163,7 @@ Examples:
         %[1]s --threads 12 -i WTf8-KT6fWA.urls.json
         %[1]s --output '[%%(upload_date)s] %%(title)s [%%(channel)s] (%%(id)s)' -i 5gDw5AWN-Kk.urls.json
         %[1]s --use-quic=false -i efFGPtC-NZU.urls.json
+        %[1]s --merger-argument tcp:bind_address=127.69.4.20 -i fvO2NFDIEgk.urls.json
 
 Resuming downloads:
         Downloads can be resumed (and reuse already downloaded segments) as long as:
@@ -210,6 +233,32 @@ func init() {
     flagSet.BoolVar(&versionPrint, "version", false, "Print version and exit")
 
     flagSet.StringVar(&logLevel, "log-level", "info", "Log level to use (debug, info, warn, error, fatal).")
+
+    flagSet.StringVar(&merger, "merger", "", "Which merger to use.")
+
+    flagSet.Func("merger-argument", "Pass an argument to a merger.", func(s string) error {
+        parts := strings.SplitN(s, ":", 2)
+        if len(parts) < 2 {
+            return fmt.Errorf("Invalid merger argument '%s', format is NAME:KEY=VALUE", s)
+        }
+        kv := strings.SplitN(parts[1], "=", 2)
+        if len(kv) < 2 {
+            return fmt.Errorf("Invalid merger argument '%s', format is NAME:KEY=VALUE", s)
+        }
+        name := strings.ToLower(parts[0])
+        key := strings.ToLower(kv[0])
+        value := kv[1]
+
+        m, ok := mergerArgs[name]
+        if !ok {
+            m = make(map[string]string)
+            mergerArgs[name] = m
+        }
+
+        m[key] = value
+
+        return nil
+    })
 }
 
 func parseArgs() {

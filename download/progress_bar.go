@@ -74,9 +74,9 @@ func (p *Progress) fmt() string {
         if p.expire != nil && p.start.Add(eta).After(*p.expire) {
             color = colorRed
         }
-        return fmt.Sprintf("%.2f%% %s(%d/%d, eta %s)%s", progress * 100, color, finished, p.total, formatDuration(eta), colorReset)
+        return fmt.Sprintf("%s%.2f%% (%d/%d, eta %s)%s", color, progress * 100, finished, p.total, formatDuration(eta), colorReset)
     } else {
-        return fmt.Sprintf("%.2f%% %s(%d/%d, eta unknown)%s", progress * 100, colorYellow, finished, p.total, colorReset)
+        return fmt.Sprintf("%s%.2f%% (%d/%d, eta unknown)%s", colorYellow, progress * 100, finished, p.total, colorReset)
     }
 
 }
