@@ -245,7 +245,7 @@ func downloadTask(
             task.logger().Warnf("Giving up segment %d", seg)
 
             status.Downloaded(seg, segments.SegmentResult { Ok: false })
-            task.Progress.done(false)
+            task.Progress.lost()
 
             seg = -1
             failCount = 0

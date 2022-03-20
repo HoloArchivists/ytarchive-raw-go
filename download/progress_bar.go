@@ -20,6 +20,7 @@ type Progress struct {
     parent     *TotalProgress
     cached     int
     downloaded int
+    failed     int
     total      int
     start      time.Time
     end        time.Time
@@ -35,6 +36,14 @@ func (p *Progress) init(totalSegments int, expire *time.Time) {
     p.expire = expire
 }
 
+func (p *Progress) lost() {
+    p.parent.mu.Lock()
+    defer p.parent.mu.Unlock()
+
+    p.failed++
+    p.updated()
+}
+
 func (p *Progress) done(cached bool) {
     p.parent.mu.Lock()
     defer p.parent.mu.Unlock()
@@ -45,7 +54,11 @@ func (p *Progress) done(cached bool) {
         p.downloaded++
     }
 
-    if p.cached + p.downloaded == p.total {
+    p.updated()
+}
+
+func (p *Progress) updated() {
+    if p.cached + p.downloaded + p.failed == p.total {
         p.end = time.Now()
     }
 
@@ -59,9 +72,30 @@ func (p *Progress) fmt() string {
         return fmt.Sprintf("%s0%% (0/???, not started yet)%s", colorYellow, colorReset)
     }
 
-    finished := p.cached + p.downloaded
+    successful := p.cached + p.downloaded
+    finished := successful + p.failed
+
+    lostString := func(color string) string {
+        if p.failed == 0 {
+            return ""
+        }
+        return fmt.Sprintf(", %slost %d%s", colorRed, p.failed, color)
+    }
+
     if finished == p.total {
-        return fmt.Sprintf("%s100%% (%d/%d in %v)%s", colorGreen, finished, p.total, p.end.Sub(p.start).Round(time.Second), colorReset)
+        color := colorGreen
+        if p.failed > 0 {
+            color = colorYellow
+        }
+        return fmt.Sprintf(
+            "%s100%% (%d/%d%s in %v)%s",
+            color,
+            successful,
+            p.total,
+            lostString(color),
+            p.end.Sub(p.start).Round(time.Second),
+            colorReset,
+        )
     }
 
     progress := float64(finished) / float64(p.total)
@@ -70,7 +104,7 @@ func (p *Progress) fmt() string {
     if p.downloaded > 100 {
         elapsed := time.Since(p.start)
 
-        etaProgress := float64(p.downloaded) / float64(p.total - p.cached)
+        etaProgress := float64(p.downloaded + p.failed) / float64(p.total - p.cached)
         etaSeconds := (1.0 / etaProgress) * elapsed.Seconds()
         eta := (time.Duration(int64(etaSeconds)) * time.Second) - elapsed
 
@@ -78,11 +112,27 @@ func (p *Progress) fmt() string {
         if p.expire != nil && p.start.Add(eta).After(*p.expire) {
             color = colorRed
         }
-        return fmt.Sprintf("%s%.2f%% (%d/%d, eta %s)%s", color, progress * 100, finished, p.total, formatDuration(eta), colorReset)
+        return fmt.Sprintf(
+            "%s%.2f%% (%d/%d%s, eta %s)%s",
+            color,
+            progress * 100,
+            successful,
+            p.total,
+            lostString(color),
+            formatDuration(eta),
+            colorReset,
+        )
     } else {
-        return fmt.Sprintf("%s%.2f%% (%d/%d, eta unknown)%s", colorYellow, progress * 100, finished, p.total, colorReset)
+        return fmt.Sprintf(
+            "%s%.2f%% (%d/%d%s, eta unknown)%s",
+            colorYellow,
+            progress * 100,
+            successful,
+            p.total,
+            lostString(colorYellow),
+            colorReset,
+        )
     }
-
 }
 
 type TotalProgress struct {
