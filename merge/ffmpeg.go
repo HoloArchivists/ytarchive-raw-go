@@ -109,7 +109,7 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     cmd := ffmpeg(options.Logger, args...)
     cmd.Env = append(
         os.Environ(),
-        fmt.Sprintf("file='%s':level=32", path.Join(options.TempDir, fmt.Sprintf("ffmpeg-%s.out", options.FregData.Metadata.Id))),
+        fmt.Sprintf("FFREPORT=file='%s':level=32", path.Join(options.TempDir, fmt.Sprintf("ffmpeg-%s.out", options.FregData.Metadata.Id))),
     )
     cmd.Stdin = nil
 
@@ -118,11 +118,17 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     cmd.Stderr = &stderr
 
     if err = cmd.Run(); err != nil {
+        printOutput(options.Logger, &stderr, false)
         return err
     }
+    printOutput(options.Logger, &stderr, true)
 
+    return nil
+}
+
+func printOutput(logger *log.Logger, stderr *bytes.Buffer, success bool) {
     warnings := make([]string, 0)
-    reader := bufio.NewReader(&stderr)
+    reader := bufio.NewReader(stderr)
 
     for {
         line, err := reader.ReadString('\n')
@@ -138,13 +144,15 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     }
 
     if len(warnings) > 0 {
-        options.Logger.Warn("FFmpeg succeeded with warnings")
+        if success {
+            logger.Warn("FFmpeg succeeded with warnings")
+        } else {
+            logger.Error("FFmpeg failed")
+        }
         for _, v := range warnings {
-            options.Logger.Warn(v)
+            logger.Warn(v)
         }
     }
-
-    return nil
 }
 
 var ignoredWarnings = []string {
