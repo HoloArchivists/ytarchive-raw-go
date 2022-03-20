@@ -52,11 +52,11 @@ type Logger struct {
 
 // used to track progress updates (which use \r to replace the previous one)
 // but if something got logged after the last update, a new line has to be printed
-var lastLine struct {
-    mu              sync.Mutex
-    buf             []byte
-    wasProgress     bool
-    size            int
+var progress struct {
+    mu           sync.Mutex
+    buf          []byte
+    lastProgress []byte
+    hasProgress  bool
 }
 
 var DefaultLogger *Logger
@@ -70,29 +70,31 @@ func init() {
 }
 
 func doWrite(isProgress bool, data []byte) (int, error) {
-    lastLine.mu.Lock()
-    defer lastLine.mu.Unlock()
+    progress.mu.Lock()
+    defer progress.mu.Unlock()
 
-    p := lastLine.wasProgress
-    if p {
-        lastLine.buf = lastLine.buf[:0]
+    progress.buf = progress.buf[:0]
+    if progress.hasProgress {
 
-        lastLine.buf = append(lastLine.buf, '\r')
-        for i := 0; i < lastLine.size; i ++ {
-            lastLine.buf = append(lastLine.buf, ' ')
+        progress.buf = append(progress.buf, '\r')
+        for i := 0; i < len(progress.lastProgress); i ++ {
+            progress.buf = append(progress.buf, ' ')
         }
-        lastLine.buf = append(lastLine.buf, '\r')
-    }
-
-    lastLine.wasProgress = isProgress
-    lastLine.size = len(data)
-
-    if p {
-        lastLine.buf = append(lastLine.buf, data...)
-        return os.Stderr.Write(lastLine.buf)
+        progress.buf = append(progress.buf, '\r')
+        progress.buf = append(progress.buf, data...)
     } else {
-        return os.Stderr.Write(data)
+        progress.buf = append(progress.buf, data...)
     }
+
+    if isProgress {
+        progress.lastProgress = append(progress.lastProgress[:0], data...)
+        progress.hasProgress = true
+        os.Stderr.Write(progress.buf)
+    } else {
+        progress.buf = append(progress.buf, progress.lastProgress...)
+        os.Stderr.Write(progress.buf)
+    }
+    return len(data), nil
 }
 
 type stdLogProxy struct {}
