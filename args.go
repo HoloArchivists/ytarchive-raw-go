@@ -54,7 +54,7 @@ func init() {
         fmt.Printf("%v", err)
         os.Exit(1)
     }
-    log.Init(level)
+    log.SetDefaultLevel(level)
 
     if input == "" {
         log.Fatalf("No input file specified")

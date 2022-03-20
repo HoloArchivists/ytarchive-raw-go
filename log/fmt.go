@@ -21,7 +21,7 @@ func itoa(buf *[]byte, i int, wid int) {
     *buf = append(*buf, b[bp:]...)
 }
 
-func formatHeader(buf *[]byte, t time.Time, file string, line int) {
+func formatTime(buf *[]byte, t time.Time) {
     //Ldate
     year, month, day := t.Date()
     itoa(buf, year, 4)
@@ -41,16 +41,23 @@ func formatHeader(buf *[]byte, t time.Time, file string, line int) {
     *buf = append(*buf, '.')
     itoa(buf, t.Nanosecond()/1e3, 6)
     *buf = append(*buf, ' ')
+}
 
-    //Lshortfile
-    for i := len(file) - 1; i > 0; i-- {
-        if file[i] == '/' {
-            file = file[i+1:]
-            break
+func formatHeader(buf *[]byte, tag string, file string, line int) {
+    if len(tag) == 0 {
+        //Lshortfile
+        for i := len(file) - 1; i > 0; i-- {
+            if file[i] == '/' {
+                file = file[i+1:]
+                break
+            }
         }
+        *buf = append(*buf, file...)
+        *buf = append(*buf, ':')
+        itoa(buf, line, -1)
+        *buf = append(*buf, ": "...)
+    } else {
+        *buf = append(*buf, tag...)
+        *buf = append(*buf, ": "...)
     }
-    *buf = append(*buf, file...)
-    *buf = append(*buf, ':')
-    itoa(buf, line, -1)
-    *buf = append(*buf, ": "...)
 }

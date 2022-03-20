@@ -42,101 +42,155 @@ func ParseLevel(name string) (Level, error) {
     return LevelFatal, fmt.Errorf("Invalid log level '%s'", name)
 }
 
-func (l Level) Enabled() bool {
-    return int(l) >= int(minLevel)
+type Logger struct {
+    buf         []byte
+    extraFrames int
+    mu          sync.Mutex
+    minLevel    Level
+    tag         string
 }
 
-var buf []byte
-var mu sync.Mutex
-var minLevel Level = LevelInfo
+var DefaultLogger *Logger
 
 func init() {
+    DefaultLogger = &Logger {
+        extraFrames: 1,
+    }
     stdlog.SetFlags(stdlog.Ldate | stdlog.Lmicroseconds | stdlog.Lshortfile)
 }
 
-func Init(level Level) {
-    minLevel = level
+func SetDefaultLevel(level Level) {
+    DefaultLogger.minLevel = level
 }
 
-func output(level Level, calldepth int, s string) {
-    now := time.Now()
-    _, file, line, ok := runtime.Caller(calldepth)
-    if !ok {
-        file = "???"
-        line = 0
+func New(tag string) *Logger {
+    return &Logger {
+        minLevel: DefaultLogger.minLevel,
+        tag:      tag,
     }
-    mu.Lock()
-    defer mu.Unlock()
+}
 
-    buf = buf[:0]
+func (l *Logger) output(level Level, calldepth int, s string) {
+    now := time.Now().UTC()
+    var file string
+    var line int
+
+    if len(l.tag) == 0 {
+        var ok bool
+        _, file, line, ok = runtime.Caller(calldepth + l.extraFrames)
+        if !ok {
+            file = "???"
+            line = 0
+        }
+    }
+    l.mu.Lock()
+    defer l.mu.Unlock()
+
+    l.buf = l.buf[:0]
 
     info := levels[level]
-    buf = append(buf, info.color...)
-    buf = append(buf, info.name...)
-    buf = append(buf, ": "...)
+    l.buf = append(l.buf, info.color...)
+    formatTime(&l.buf, now)
+    l.buf = append(l.buf, info.name...)
+    l.buf = append(l.buf, ": "...)
     for i := len(info.name); i < 5; i++ {
-        buf = append(buf, ' ')
+        l.buf = append(l.buf, ' ')
     }
 
-    formatHeader(&buf, now, file, line)
-    buf = append(buf, s...)
+    formatHeader(&l.buf, l.tag, file, line)
+    l.buf = append(l.buf, s...)
     if len(s) == 0 || s[len(s)-1] != '\n' {
-        buf = append(buf, '\n')
+        l.buf = append(l.buf, '\n')
     }
-    buf = append(buf, EndColor...)
-    os.Stderr.Write(buf)
+    l.buf = append(l.buf, EndColor...)
+    os.Stderr.Write(l.buf)
 }
 
-func logf(level Level, format string, v ...interface{}) {
-    if level.Enabled() {
-        output(level, 3, fmt.Sprintf(format, v...))
+func (l *Logger) logf(level Level, format string, v ...interface{}) {
+    if int(level) >= int(l.minLevel) {
+        l.output(level, 3, fmt.Sprintf(format, v...))
     }
     if level == LevelFatal {
         os.Exit(1)
     }
 }
 
-func log(level Level, v ...interface{}) {
-    if level.Enabled() {
-        output(level, 3, fmt.Sprint(v...))
+func (l *Logger) log(level Level, v ...interface{}) {
+    if int(level) >= int(l.minLevel) {
+        l.output(level, 3, fmt.Sprint(v...))
     }
     if level == LevelFatal {
         os.Exit(1)
     }
+}
+
+func (l *Logger) Debug(v ...interface{}) {
+    l.log(LevelDebug, v...)
+}
+func (l *Logger) Debugf(format string, v ...interface{}) {
+    l.logf(LevelDebug, format, v...)
+}
+
+func (l *Logger) Info(v ...interface{}) {
+    l.log(LevelInfo, v...)
+}
+func (l *Logger) Infof(format string, v ...interface{}) {
+    l.logf(LevelInfo, format, v...)
+}
+
+func (l *Logger) Warn(v ...interface{}) {
+    l.log(LevelWarn, v...)
+}
+func (l *Logger) Warnf(format string, v ...interface{}) {
+    l.logf(LevelWarn, format, v...)
+}
+
+func (l *Logger) Error(v ...interface{}) {
+    l.log(LevelError, v...)
+}
+func (l *Logger) Errorf(format string, v ...interface{}) {
+    l.logf(LevelError, format, v...)
+}
+
+func (l *Logger) Fatal(v ...interface{}) {
+    l.log(LevelFatal, v...)
+}
+func (l *Logger) Fatalf(format string, v ...interface{}) {
+    l.logf(LevelFatal, format, v...)
 }
 
 func Debug(v ...interface{}) {
-    log(LevelDebug, v...)
+    DefaultLogger.Debug(v...)
 }
 func Debugf(format string, v ...interface{}) {
-    logf(LevelDebug, format,v...)
+    DefaultLogger.Debugf(format, v...)
 }
 
 func Info(v ...interface{}) {
-    log(LevelInfo, v...)
+    DefaultLogger.Info(v...)
 }
 func Infof(format string, v ...interface{}) {
-    logf(LevelInfo, format,v...)
+    DefaultLogger.Infof(format, v...)
 }
 
 func Warn(v ...interface{}) {
-    log(LevelWarn, v...)
+    DefaultLogger.Warn(v...)
 }
 func Warnf(format string, v ...interface{}) {
-    logf(LevelWarn, format,v...)
+    DefaultLogger.Warnf(format, v...)
 }
 
 func Error(v ...interface{}) {
-    log(LevelError, v...)
+    DefaultLogger.Error(v...)
 }
 func Errorf(format string, v ...interface{}) {
-    logf(LevelError, format,v...)
+    DefaultLogger.Errorf(format, v...)
 }
 
 func Fatal(v ...interface{}) {
-    log(LevelFatal, v...)
+    DefaultLogger.Fatal(v...)
 }
 func Fatalf(format string, v ...interface{}) {
-    logf(LevelFatal, format,v...)
+    DefaultLogger.Fatalf(format, v...)
 }
 
