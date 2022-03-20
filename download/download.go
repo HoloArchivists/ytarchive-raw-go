@@ -166,10 +166,21 @@ func (d *DownloadTask) run() {
 
     var segmentCount int
     if d.SegmentCount == 0 {
-        var err error
-        segmentCount, err = d.getSegmentCount()
-        if err != nil {
-            d.result.Error = err
+        var fails []error
+        ok := false
+        for i := 0; i < 3; i++ {
+            var err error
+            segmentCount, err = d.getSegmentCount()
+            if err != nil {
+                fails = append(fails, err)
+                time.Sleep(2 * time.Second)
+                continue
+            }
+            ok = true
+            break
+        }
+        if !ok {
+            d.result.Error = fmt.Errorf("Unable to fetch segment count: %v", fails)
             return
         }
     } else {
@@ -250,17 +261,17 @@ func downloadTask(
             }
         }
 
+        if networkFailCount > 3 {
+            task.logger().Warnf("Suspicious network failures for segment %d, replacing http client", seg)
+
+            requester.Dispose()
+            requester = task.Client.GetRequester()
+            networkFailCount = 0
+
+            continue
+        }
+
         if failCount >= fails {
-            //retry again instantly, it'll grab a new client and go from there
-            if networkFailCount > failCount / 2 {
-                task.logger().Warnf("Suspicious network failures for segment %d, replacing http client", seg)
-
-                requester.Dispose()
-                requester = task.Client.GetRequester()
-
-                failCount -= networkFailCount
-                continue
-            }
             if requeues < task.RequeueFailed && (!status.IsLast(seg) || task.RequeueLast) {
                 task.logger().Warnf("Failed segment %d, requeue %d/%d", seg, requeues + 1, task.RequeueFailed)
                 queue.RequeueFailed(seg, requeues + 1)
