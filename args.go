@@ -35,6 +35,7 @@ var (
     fregData       util.FregJson
     fsync          bool
     input          string
+    ipPoolFile     string
     keepFiles      bool
     logLevel       string
     mergeOnlyFile  string
@@ -97,6 +98,13 @@ Options:
 
         --input FILE
                 Input JSON file. Required.
+
+        --ip-pool FILE
+                File containing IP addresses to use for downloading. Each
+                line should be either empty or contain an IP address.
+                The file may contain both ipv4 and ipv6 addresses.
+
+                If present, --ipv4 and --ipv6 are ignored.
 
         -k, --keep-files
                 Do not delete temporary files.
@@ -283,6 +291,8 @@ func init() {
 
     flagSet.StringVar(&input, "i",     "", "Input JSON file.")
     flagSet.StringVar(&input, "input", "", "Input JSON file.")
+
+    flagSet.StringVar(&ipPoolFile, "ip-pool", "", "IP addresses to use.")
 
     flagSet.BoolVar(&keepFiles, "k",          false, "Do not delete temporary files.")
     flagSet.BoolVar(&keepFiles, "keep-files", false, "Do not delete temporary files.")

@@ -141,7 +141,7 @@ func (d *DownloadTask) getSegmentCount() (int, error) {
     d.logger().Info("Getting total segments")
 
     url := getSegUrl(d.Url, 0)
-    resp, err := d.Client.Get(url)
+    resp, err := d.Client.GetRequester().Get(url)
     if err != nil {
         return -1, err
     }
@@ -219,6 +219,7 @@ func downloadTask(
 ) {
     defer wg.Done()
     queue := status.CreateQueue(int(threadNumber))
+    requester := task.Client.GetRequester()
 
     failCount := uint(0)
     networkFailCount := uint(0)
@@ -253,7 +254,9 @@ func downloadTask(
             //retry again instantly, it'll grab a new client and go from there
             if networkFailCount > failCount / 2 {
                 task.logger().Warnf("Suspicious network failures for segment %d, replacing http client", seg)
-                task.Client.ReplaceClient()
+
+                requester.Dispose()
+                requester = task.Client.GetRequester()
 
                 failCount -= networkFailCount
                 continue
@@ -280,7 +283,7 @@ func downloadTask(
 
         task.logger().Debugf("Current segment: %d", seg)
 
-        ok, cached := downloadSegment(task, status, seg, &networkFailCount)
+        ok, cached := downloadSegment(task, requester, status, seg, &networkFailCount)
         if ok {
             task.Progress.done(seg, cached)
 
@@ -313,7 +316,7 @@ func segmentBaseFileName(task *DownloadTask, segment int) string {
     )
 }
 
-func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment int, networkErrors *uint) (bool, bool) {
+func downloadSegment(task *DownloadTask, requester *util.HttpRequester, status *segments.SegmentStatus, segment int, networkErrors *uint) (bool, bool) {
     segmentBasePath := segmentBaseFileName(task, segment)
     segmentDownloadPath := segmentBasePath + ".incomplete"
     segmentDonePath := segmentBasePath + ".done"
@@ -336,7 +339,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
     }
     req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36")
 
-    resp, err := doRequest(task, req)
+    resp, err := doRequest(task, requester, req)
     if err != nil {
         *networkErrors++
         task.logger().Debugf("Request for segment %d failed with %v", segment, err)
@@ -348,7 +351,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
         task.logger().Debugf("Non-200 status code %d for segment %d", resp.StatusCode, segment)
         req, err = http.NewRequest("GET", task.Url, nil)
         if err == nil {
-            resp, err = doRequest(task, req)
+            resp, err = doRequest(task, requester, req)
             if resp != nil {
                 defer resp.Body.Close()
             }
@@ -397,10 +400,10 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
     return true, false
 }
 
-func doRequest(task *DownloadTask, req *http.Request) (*http.Response, error) {
+func doRequest(task *DownloadTask, requester *util.HttpRequester, req *http.Request) (*http.Response, error) {
     var errors []error
     for i := uint(0); i < task.RetryThreshold; i++ {
-        resp, err := task.Client.Do(req)
+        resp, err := requester.Do(req)
         if err == nil {
             return resp, nil
         }

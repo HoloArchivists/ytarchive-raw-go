@@ -1,15 +1,21 @@
 package util
 
 import (
+    "bufio"
     "crypto/tls"
     "fmt"
     "io"
+    "math/rand"
+    "os"
     "net"
     "net/http"
+    "strings"
     "sync"
 
     "github.com/lucas-clemente/quic-go"
     "github.com/lucas-clemente/quic-go/http3"
+
+    "inet.af/netaddr"
 )
 
 type Network int
@@ -21,15 +27,57 @@ const (
 
 var closeRequested = fmt.Errorf("Client close requested")
 
+type IPPool struct {
+    Addresses []netaddr.IP
+}
+
+func ParseIPPool(path string) (*IPPool, error) {
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    pool := &IPPool {}
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+        if line == "" {
+            continue
+        }
+        ip, err := netaddr.ParseIP(line)
+        if err != nil {
+            return nil, err
+        }
+        pool.Addresses = append(pool.Addresses, ip)
+    }
+    if err = scanner.Err(); err != nil {
+        return nil, err
+    }
+    return pool, nil
+}
+
+func (p *IPPool) random() netaddr.IP {
+    if len(p.Addresses) == 0 {
+        panic("No IP addresses in pool")
+    }
+    return p.Addresses[rand.Intn(len(p.Addresses))]
+}
+
 type HttpClientConfig struct {
+    IPPool  *IPPool
     Network Network
     UseQuic bool
 }
 
 type HttpClient struct {
-    cfg    *HttpClientConfig
-    client *internalClient
-    mu     sync.Mutex
+    cfg        *HttpClientConfig
+    socketLock sync.Mutex
+    sockets    map[netaddr.IP]quic.OOBCapablePacketConn
+    clientLock sync.Mutex
+    clients    map[netaddr.IP]*internalClient
+    // used for NetworkAny
+    anyClient  *internalClient
 }
 
 func NewClient(cfg *HttpClientConfig) *HttpClient {
@@ -38,81 +86,172 @@ func NewClient(cfg *HttpClientConfig) *HttpClient {
     }
 }
 
-func (c *HttpClient) ReplaceClient() {
-    c.mu.Lock()
-    defer c.mu.Unlock()
-
-    c.client.startClose()
-    c.client = nil
+func (c *HttpClient) GetRequester() *HttpRequester {
+    var bindAddr *netaddr.IP
+    if c.cfg.IPPool != nil {
+        a := c.cfg.IPPool.random()
+        bindAddr = &a
+    } else {
+        switch c.cfg.Network {
+        case NetworkAny:
+            bindAddr = nil
+        case NetworkIPv4:
+            a := netaddr.IPv4(0, 0, 0, 0)
+            bindAddr = &a
+        case NetworkIPv6:
+            a := netaddr.IPv6Unspecified()
+            bindAddr = &a
+        default:
+            panic(fmt.Sprintf("Unhandled network type %v", c.cfg.Network))
+        }
+    }
+    return &HttpRequester {
+        owner:  c,
+        client: c.getClient(bindAddr),
+        ip:     bindAddr,
+    }
 }
 
-func (c *HttpClient) dialQuic(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
-    var udpNetwork string
-    var udpAddr    *net.UDPAddr
-    //TODO ip pool?
-    switch c.cfg.Network {
-    case NetworkAny:
-        udpNetwork = "udp"
-        udpAddr    = nil
-    case NetworkIPv4:
-        udpNetwork = "udp4"
-        udpAddr    = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-    case NetworkIPv6:
-        udpNetwork = "udp6"
-        udpAddr    = &net.UDPAddr{IP: net.IPv6zero, Port: 0}
-    default:
-        panic(fmt.Sprintf("Unhandled network type %v", c.cfg.Network))
+func (c *HttpClient) getSocket(ip netaddr.IP) (quic.OOBCapablePacketConn, error) {
+    c.socketLock.Lock()
+    defer c.socketLock.Unlock()
+    if c.sockets == nil {
+        c.sockets = make(map[netaddr.IP]quic.OOBCapablePacketConn)
     }
-    remoteAddr, err := net.ResolveUDPAddr(udpNetwork, addr)
+    if conn, ok := c.sockets[ip]; ok {
+        return conn, nil
+    }
+
+    var network string
+    var addr net.IP
+    if ip.Is6() {
+        network = "udp6"
+        ip6 := ip.As16()
+        addr = append([]byte(nil), ip6[:]...)
+    } else {
+        network = "udp4"
+        ip4 := ip.As4()
+        addr = append([]byte(nil), ip4[:]...)
+    }
+
+    udpConn, err := net.ListenUDP(network, &net.UDPAddr{IP: addr, Port: 0})
     if err != nil {
         return nil, err
     }
-    udpConn, err := net.ListenUDP(udpNetwork, udpAddr)
-    if err != nil {
-        return nil, err
-    }
-    return quic.DialEarly(udpConn, remoteAddr, addr, tlsCfg, cfg)
+    c.sockets[ip] = udpConn
+    return udpConn, nil
 }
 
-func (c *HttpClient) getClient() *internalClient {
-    c.mu.Lock()
-    defer c.mu.Unlock()
+func (c *HttpClient) dropClient(ip *netaddr.IP, expectedClient *internalClient) {
+    c.clientLock.Lock()
+    defer c.clientLock.Unlock()
 
-    if c.client == nil {
-        var rt http.RoundTripper
-        if c.cfg.UseQuic {
-            rt = &http3.RoundTripper {
-                Dial: c.dialQuic,
-            }
+    if ip == nil {
+        if c.anyClient == expectedClient {
+            c.anyClient.startClose()
+            c.anyClient = nil
         }
-        c.client = &internalClient {
-            client: &http.Client {
-                Transport: rt,
-            },
-        }
+        return
     }
-    return c.client
-}
 
-func (c *HttpClient) Do(req *http.Request) (*http.Response, error) {
-    //retry up to 3 times if a close was requested
-    i := 0
-    for {
-        resp, err := c.getClient().do(req)
-        if i < 3 && err == closeRequested {
-            i++
-            continue
-        }
-        return resp, err
+    if c.clients == nil {
+        panic("Attempt to drop client but map is nil")
+    }
+
+    client := c.clients[*ip]
+    if client == expectedClient {
+        client.startClose()
+        c.clients[*ip] = nil
     }
 }
 
-func (c *HttpClient) Get(url string) (*http.Response, error) {
+func (c *HttpClient) getClient(ip *netaddr.IP) *internalClient {
+    c.clientLock.Lock()
+    defer c.clientLock.Unlock()
+
+    if ip == nil {
+        if c.anyClient == nil {
+            c.anyClient = c.createClient(nil)
+        }
+        return c.anyClient
+    }
+
+    if c.clients == nil {
+        c.clients = make(map[netaddr.IP]*internalClient)
+    }
+
+    client := c.clients[*ip]
+    if client != nil {
+        return client
+    }
+
+    client = c.createClient(func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+        if ip.Is6() {
+            network = "udp6"
+        } else {
+            network = "udp4"
+        }
+
+        remoteAddr, err := net.ResolveUDPAddr(network, addr)
+        if err != nil {
+            return nil, err
+        }
+        udpConn, err := c.getSocket(*ip)
+        if err != nil {
+            return nil, err
+        }
+        return quic.DialEarly(udpConn, remoteAddr, addr, tlsCfg, cfg)
+    })
+    c.clients[*ip] = client
+    return client
+}
+
+func (c *HttpClient) createClient(dial func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error)) *internalClient {
+    var rt http.RoundTripper
+    if c.cfg.UseQuic {
+        rt = &http3.RoundTripper {
+            Dial: dial,
+        }
+    }
+    return &internalClient {
+        client: &http.Client {
+            Transport: rt,
+        },
+    }
+}
+
+type HttpRequester struct {
+    owner  *HttpClient
+    client *internalClient
+    ip     *netaddr.IP
+    mu     sync.Mutex
+}
+
+func (r *HttpRequester) Dispose() {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    r.owner.dropClient(r.ip, r.client)
+    r.client = nil
+}
+
+func (r *HttpRequester) Do(req *http.Request) (*http.Response, error) {
+    r.mu.Lock()
+    c := r.client
+    r.mu.Unlock()
+
+    if c == nil {
+        panic("Use of disposed requester")
+    }
+    return c.do(req)
+}
+
+func (r *HttpRequester) Get(url string) (*http.Response, error) {
     req, err := http.NewRequest("GET", url, nil)
     if err != nil {
         return nil, err
     }
-    return c.Do(req)
+    return r.Do(req)
 }
 
 // quic-go has no way to close the client without killing existing connections
@@ -125,8 +264,8 @@ type internalClient struct {
 }
 
 func (c *internalClient) doClose() {
-    if c, ok := c.client.Transport.(io.Closer); ok {
-        c.Close()
+    if cl, ok := c.client.Transport.(io.Closer); ok {
+        cl.Close()
     }
 }
 
@@ -155,7 +294,7 @@ func (c *internalClient) endRequest() {
     defer c.mu.Unlock()
 
     c.pendingRequests--
-    if c.shouldClose {
+    if c.shouldClose && c.pendingRequests == 0 {
         c.doClose()
     }
 }
@@ -199,5 +338,4 @@ func (r *endReader) Close() error {
 
     return err
 }
-
 

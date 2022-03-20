@@ -75,7 +75,16 @@ func main() {
         return
     }
 
+    var ipPool *util.IPPool
+    if ipPoolFile != "" {
+        var err error
+        if ipPool, err = util.ParseIPPool(ipPoolFile); err != nil {
+            log.Fatalf("Failed to parse IP pool: %v", err)
+        }
+    }
+
     client := util.NewClient(&util.HttpClientConfig {
+        IPPool:  ipPool,
         Network: network,
         UseQuic: useQuic,
     })
