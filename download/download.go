@@ -22,8 +22,6 @@ import (
 const DefaultFailThreshold = 20
 const DefaultRetryThreshold = 3
 
-var defaultClient = &http.Client {}
-
 type DownloadResult struct {
     Error         error
     LostSegments  []int
@@ -31,7 +29,7 @@ type DownloadResult struct {
 }
 
 type DownloadTask struct {
-    Client         *http.Client
+    CreateClient   func() *http.Client
     FailThreshold  uint
     Fsync          bool
     Logger         *log.Logger
@@ -45,6 +43,8 @@ type DownloadTask struct {
     SegmentDir     string
     Threads        uint
     Url            string
+    clientLock     sync.Mutex
+    httpClient     *http.Client
     wg             sync.WaitGroup
     result         DownloadResult
     started        bool
@@ -129,10 +129,24 @@ func (d *DownloadTask) Wait() *DownloadResult {
 }
 
 func (d *DownloadTask) client() *http.Client {
-    if d.Client != nil {
-        return d.Client
+    d.clientLock.Lock()
+    defer d.clientLock.Unlock()
+
+    if d.httpClient == nil {
+        d.httpClient = d.CreateClient()
     }
-    return defaultClient
+    return d.httpClient
+}
+
+func (d *DownloadTask) replaceClient() {
+    d.clientLock.Lock()
+    defer d.clientLock.Unlock()
+
+    if c, ok := d.httpClient.Transport.(io.Closer); ok {
+        c.Close()
+    }
+    //next client() call will create a new one
+    d.httpClient = nil
 }
 
 func (d *DownloadTask) logger() *log.Logger {
@@ -219,6 +233,7 @@ func downloadTask(
     queue := status.CreateQueue(int(threadNumber))
 
     failCount := uint(0)
+    networkFailCount := uint(0)
 
     seg := -1
     requeues := uint(0)
@@ -247,6 +262,14 @@ func downloadTask(
         }
 
         if failCount >= fails {
+            //retry again instantly, it'll grab a new client and go from there
+            if networkFailCount > failCount / 2 {
+                task.logger().Warnf("Suspicious network failures for segment %d, replacing http client", seg)
+                task.replaceClient()
+
+                failCount -= networkFailCount
+                continue
+            }
             if requeues < task.RequeueFailed && (!status.IsLast(seg) || task.RequeueLast) {
                 task.logger().Warnf("Failed segment %d, requeue %d/%d", seg, requeues + 1, task.RequeueFailed)
                 queue.RequeueFailed(seg, requeues + 1)
@@ -269,7 +292,7 @@ func downloadTask(
 
         task.logger().Debugf("Current segment: %d", seg)
 
-        ok, cached := downloadSegment(task, status, seg)
+        ok, cached := downloadSegment(task, status, seg, &networkFailCount)
         if ok {
             task.Progress.done(seg, cached)
 
@@ -302,7 +325,7 @@ func segmentBaseFileName(task *DownloadTask, segment int) string {
     )
 }
 
-func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment int) (bool, bool) {
+func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment int, networkErrors *uint) (bool, bool) {
     segmentBasePath := segmentBaseFileName(task, segment)
     segmentDownloadPath := segmentBasePath + ".incomplete"
     segmentDonePath := segmentBasePath + ".done"
@@ -327,6 +350,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
 
     resp, err := doRequest(task, req)
     if err != nil {
+        *networkErrors++
         task.logger().Debugf("Request for segment %d failed with %v", segment, err)
         return false, false
     }
@@ -388,7 +412,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
 func doRequest(task *DownloadTask, req *http.Request) (*http.Response, error) {
     var errors []error
     for i := uint(0); i < task.RetryThreshold; i++ {
-        resp, err := task.Client.Do(req)
+        resp, err := task.client().Do(req)
         if err == nil {
             return resp, nil
         }

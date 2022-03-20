@@ -76,12 +76,14 @@ func main() {
         return
     }
 
-    var rt http.RoundTripper
-    if useQuic {
-        rt = &http3.RoundTripper {}
-    }
-    client := &http.Client {
-        Transport: rt,
+    createClient := func() *http.Client {
+        var rt http.RoundTripper
+        if useQuic {
+            rt = &http3.RoundTripper {}
+        }
+        return &http.Client {
+            Transport: rt,
+        }
     }
 
     muxer, err := merge.CreateBestMuxer(muxerOpts)
@@ -92,7 +94,7 @@ func main() {
     progress := download.NewProgress(windowName)
 
     audioTask := &download.DownloadTask {
-        Client:         client,
+        CreateClient:   createClient,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
         Logger:         log.New("audio.0"),
@@ -108,7 +110,7 @@ func main() {
         Url:            fregData.BestAudio(),
     }
     videoTask := &download.DownloadTask {
-        Client:         client,
+        CreateClient:   createClient,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
         Logger:         log.New("video.0"),
