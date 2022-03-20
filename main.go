@@ -37,7 +37,7 @@ func main() {
         if err != nil {
             log.Fatalf("Unable to create temp dir: %v", err)
         }
-        log.Info("Storing temporary files in %s", tempDir)
+        log.Infof("Storing temporary files in %s", tempDir)
     } else {
         if err := os.MkdirAll(tempDir, 0755); err != nil {
             log.Fatalf("Unable to create temp dir at '%s': %v", tempDir, err)
