@@ -36,6 +36,7 @@ func main() {
         log.Warnf("New version available: %s", latestVersion)
     }
 
+    deleteTempDir := false
     if tempDir == "" {
         var err error
         tempDir, err = ioutil.TempDir("", fmt.Sprintf("ytarchive-%s-", fregData.Metadata.Id))
@@ -43,6 +44,7 @@ func main() {
             log.Fatalf("Unable to create temp dir: %v", err)
         }
         log.Infof("Storing temporary files in %s", tempDir)
+        deleteTempDir = !keepFiles
     } else {
         if err := os.MkdirAll(tempDir, 0755); err != nil {
             log.Fatalf("Unable to create temp dir at '%s': %v", tempDir, err)
@@ -153,6 +155,11 @@ func main() {
     //print again once it's done so it doesn't get buried in newer logs
     if printNewVersion {
         log.Warnf("New version available: %s", latestVersion)
+    }
+    if deleteTempDir {
+        if err = os.RemoveAll(tempDir); err != nil {
+            log.Warnf("Failed to delete temp dir: %v", err)
+        }
     }
 
     if res != nil {
