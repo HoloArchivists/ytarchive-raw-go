@@ -10,7 +10,6 @@ import (
 
 type Merger interface {
     Merge(*segments.SegmentStatus)
-    Wait()
 }
 
 type Muxer interface {
@@ -27,7 +26,8 @@ func CreateBestMuxer(opts *MuxerOptions) (Muxer, error) {
 //        opts.Logger.Info("Using concatf protocol")
     }
     if hasProtocol("tcp") {
-//        opts.Logger.Info("Using tcp protocol")
+        opts.Logger.Info("Using tcp protocol")
+        return CreateTcpMuxer(opts)
     }
     if hasProtocol("file") {
         opts.Logger.Warn("Using concat merger")

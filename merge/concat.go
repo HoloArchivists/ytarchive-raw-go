@@ -47,8 +47,9 @@ func (m *ConcatMuxer) VideoMerger() Merger {
 }
 
 func (m *ConcatMuxer) Mux() error {
-    m.audioMerger.Wait()
-    m.videoMerger.Wait()
+    // need to wait for merged files to be available before muxing
+    m.audioMerger.wg.Wait()
+    m.videoMerger.wg.Wait()
 
     if err := muxFfmpeg(m.opts, m.audioMerger.targetFile, m.videoMerger.targetFile); err != nil {
         return err
@@ -61,6 +62,8 @@ func (m *ConcatMuxer) Mux() error {
     if err := os.Remove(m.videoMerger.targetFile); err != nil {
         m.opts.Logger.Warnf("Failed to remove merged video: %v", err)
     }
+
+    return nil
 }
 
 var _ Merger = &concatTask {}
@@ -89,10 +92,6 @@ func createConcatTask(options *MuxerOptions, which string) (*concatTask, error) 
     }
     task.wg.Add(1)
     return task, nil
-}
-
-func (m *concatTask) Wait() {
-    m.wg.Wait()
 }
 
 func copyFile(from string, to string) error {

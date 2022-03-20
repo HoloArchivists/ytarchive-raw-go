@@ -86,13 +86,24 @@ func main() {
     audioTask.Start()
     videoTask.Start()
 
+    //start muxer early so segments can be deleted if keep-files is disabled
+    //for the tcp muxer
+    muxerResult := make(chan error)
+    go func() {
+        muxerResult <- muxer.Mux()
+    }()
+
     audioRes := audioTask.Wait()
     videoRes := videoTask.Wait()
 
     printResult(audioTask.Logger, audioRes)
     printResult(videoTask.Logger, videoRes)
 
-    log.Info("Download finished, muxing...")
-    muxer.Mux()
+    log.Info("Waiting for muxing to finish")
+    res := <-muxerResult
+    if res != nil {
+        log.Fatalf("Muxing failed: %v", res)
+    }
+    log.Info("Success!")
 }
 

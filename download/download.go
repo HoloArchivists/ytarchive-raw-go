@@ -141,7 +141,6 @@ func (d *DownloadTask) getSegmentCount() (int, error) {
     if err != nil {
         return -1, fmt.Errorf("Unable to parse x-head-seqnum '%s': %v", header, err)
     }
-    segmentCount = 1000
     d.logger().Infof("Total segments: %d", segmentCount)
 
     return segmentCount, nil
@@ -178,7 +177,6 @@ func (d *DownloadTask) run() {
     }
 
     downloadGroup.Wait()
-    d.Merger.Wait()
     d.result.LostSegments = segmentStatus.MissedSegments()
 }
 
