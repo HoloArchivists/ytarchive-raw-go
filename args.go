@@ -139,7 +139,7 @@ Options:
                 thread that finishes it's work helping the others until all segments
                 are done.
 
-                Default is 'sequential'
+                Default is 'out-of-order'
 
         --requeue-delay DELAY
                 Minimum amount of time to wait before redownloading a segment
@@ -263,8 +263,8 @@ func init() {
 
     flagSet.BoolVar(&useQuic, "use-quic", true, "Whether or not HTTP/3 should be used.")
 
-    flagSet.StringVar(&queue, "q",          "sequential", "Order to download segments (sequential, out-of-order).")
-    flagSet.StringVar(&queue, "queue-mode", "sequential", "Order to download segments (sequential, out-of-order).")
+    flagSet.StringVar(&queue, "q",          "out-of-order", "Order to download segments (sequential, out-of-order).")
+    flagSet.StringVar(&queue, "queue-mode", "out-of-order", "Order to download segments (sequential, out-of-order).")
 
     flagSet.BoolVar(&verbose, "v",       false, "Enable debug logging. Overrides log-level.")
     flagSet.BoolVar(&verbose, "verbose", false, "Enable debug logging. Overrides log-level.")
