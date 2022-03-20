@@ -40,6 +40,7 @@ type DownloadTask struct {
     RequeueFailed  uint
     RequeueLast    bool
     RetryThreshold uint
+    SegmentCount   uint
     SegmentDir     string
     Threads        uint
     Url            string
@@ -183,11 +184,18 @@ func (d *DownloadTask) getSegmentCount() (int, error) {
 func (d *DownloadTask) run() {
     defer d.wg.Done()
 
-    segmentCount, err := d.getSegmentCount()
-    if err != nil {
-        d.result.Error = err
-        return
+    var segmentCount int
+    if d.SegmentCount == 0 {
+        var err error
+        segmentCount, err = d.getSegmentCount()
+        if err != nil {
+            d.result.Error = err
+            return
+        }
+    } else {
+        segmentCount = int(d.SegmentCount)
     }
+
     d.result.TotalSegments = segmentCount
 
     d.Progress.init(segmentCount, d.expire)
