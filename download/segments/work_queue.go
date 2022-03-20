@@ -177,7 +177,7 @@ func (b *batchRange) tryGetFailed(hasNonFailed bool) (failedSeg, int, bool) {
         if hasNonFailed && !seg.isReady() {
             return failedSeg{}, -1, false
         }
-        b.failed = b.failed[:1]
+        b.failed = b.failed[1:]
         return seg, -1, true
     }
     return failedSeg{}, -1, false
