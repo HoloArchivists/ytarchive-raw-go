@@ -129,6 +129,7 @@ var ignoredWarnings = []string {
     "    Last message repeated ",
     "Found duplicated MOOV Atom. Skipped it",
     "Found unknown-length element with ID 0x18538067 at pos.",
+    "Thread message queue blocking;",
 }
 
 func ignoreWarning(line string) bool {
