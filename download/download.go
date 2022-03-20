@@ -4,11 +4,9 @@ import (
     "fmt"
     "io"
     "net/http"
-    "net/url"
     "os"
     "path/filepath"
     "strconv"
-    "strings"
     "sync"
     "time"
 
@@ -47,9 +45,7 @@ type DownloadTask struct {
     wg             sync.WaitGroup
     result         DownloadResult
     started        bool
-    id             string
-    itag           int
-    expire         *time.Time
+    parsedUrl      *parsedURL
 }
 
 func (d *DownloadTask) Start() {
@@ -77,47 +73,16 @@ func (d *DownloadTask) Start() {
         log.Fatal("Empty SegmentDir")
     }
 
-    targetUrl, err := url.Parse(d.Url)
+    parsedUrl, err := parseDownloadURL(d.Url)
     if err != nil {
         d.logger().Fatalf("Failed to parse URL: %v", err)
     }
+    d.parsedUrl = parsedUrl
 
-    query := targetUrl.Query()
-
-    if !query.Has("id") {
-        d.logger().Fatal("URL missing 'id' parameter")
-    }
-    id := query.Get("id")
-    if idx := strings.IndexByte(id, '~'); idx > 0 {
-        id = id[:idx]
-    }
-    d.id = id
-
-    if !query.Has("itag") {
-        d.logger().Fatal("URL misssing 'itag' parameter")
-    }
-    itagString := query.Get("itag")
-    itag, err := strconv.Atoi(itagString)
-    if err != nil {
-        d.logger().Fatalf("Unable to parse itag value '%s' into an int", itagString)
-    }
-    d.itag = itag
-
-    //not a failure if missing, just won't warn on ETA >= remaining duration
-    if !query.Has("expire") {
-        d.logger().Warn("Unable to find 'expire' query parameter")
-    } else {
-        expireString := query.Get("expire")
-        expire, err := strconv.ParseInt(expireString, 10, 64)
-        if err != nil {
-            d.logger().Warnf("Unable to parse 'expire' parameter: %v", err)
-        } else {
-            t := time.Unix(expire, 0)
-            if now := time.Now(); now.After(t) {
-                d.Logger.Warnf("URL expired %v ago, download will most likely fail", now.Sub(t).Round(time.Second))
-            }
-            d.expire = &t
-        }
+    if parsedUrl.expire == nil {
+        d.logger().Warn("Unable to find 'expire' field in URL")
+    } else if now := time.Now(); now.After(*parsedUrl.expire) {
+        d.Logger.Warnf("URL expired %v ago, download will most likely fail", now.Sub(*parsedUrl.expire).Round(time.Second))
     }
 
     d.wg.Add(1)
@@ -140,7 +105,7 @@ func (d *DownloadTask) logger() *log.Logger {
 func (d *DownloadTask) getSegmentCount() (int, error) {
     d.logger().Info("Getting total segments")
 
-    url := getSegUrl(d.Url, 0)
+    url := d.parsedUrl.SegmentURL(0)
     resp, err := d.Client.GetRequester().Get(url)
     if err != nil {
         return -1, err
@@ -189,7 +154,7 @@ func (d *DownloadTask) run() {
 
     d.result.TotalSegments = segmentCount
 
-    d.Progress.init(segmentCount, d.expire)
+    d.Progress.init(segmentCount, d.parsedUrl.expire)
 
     segmentStatus := segments.Create(segmentCount, int(d.Threads), d.QueueMode, d.RequeueDelay)
     go d.Merger.Merge(segmentStatus)
@@ -207,19 +172,6 @@ func (d *DownloadTask) run() {
 
     downloadGroup.Wait()
     d.result.LostSegments = segmentStatus.MissedSegments()
-}
-
-func getSegUrl(baseUrl string, seg int) string {
-    url, err := url.Parse(baseUrl)
-    if err != nil {
-        log.Fatalf("Invalid url '%s': %v", baseUrl, err)
-    }
-
-    q := url.Query()
-    q.Set("sq", fmt.Sprintf("%d", seg))
-    url.RawQuery = q.Encode()
-
-    return url.String()
 }
 
 func downloadTask(
@@ -320,8 +272,8 @@ func segmentBaseFileName(task *DownloadTask, segment int) string {
         task.SegmentDir,
         fmt.Sprintf(
             "segment-%s_%d.%d",
-            task.id,
-            task.itag,
+            task.parsedUrl.id,
+            task.parsedUrl.itag,
             segment,
         ),
     )
@@ -342,7 +294,7 @@ func downloadSegment(task *DownloadTask, requester *util.HttpRequester, status *
         return true, true
     }
 
-    targetUrl := getSegUrl(task.Url, segment)
+    targetUrl := task.parsedUrl.SegmentURL(segment)
 
     req, err := http.NewRequest("GET", targetUrl, nil)
     if err != nil {
