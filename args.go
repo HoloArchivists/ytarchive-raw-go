@@ -24,7 +24,7 @@ const (
 
 var Commit string
 
-const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s).mkv"
+const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s)"
 
 var (
     flagSet        *flag.FlagSet
