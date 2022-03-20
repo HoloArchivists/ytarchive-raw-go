@@ -157,9 +157,18 @@ func (d *DownloadTask) run() {
     }
     d.result.TotalSegments = segmentCount
 
+    start := time.Now()
     pbar := makeProgressBar(segmentCount, func(msg string, finished int, total int) {
         progress := float64(finished) / float64(total)
-        d.logger().Infof("|%s| %.2f%% (%d/%d)", msg, progress * 100, finished, total)
+
+        if progress > 0.0 {
+            elapsed := time.Since(start)
+            etaSeconds := (1.0 / progress) * elapsed.Seconds()
+            eta := time.Duration(int64(etaSeconds)) * time.Second
+            d.logger().Infof("|%s| %.2f%% (%d/%d, eta %v)", msg, progress * 100, finished, total, eta)
+        } else {
+            d.logger().Infof("|%s| %.2f%% (%d/%d, eta unknown)", msg, progress * 100, finished, total)
+        }
     })
 
     segmentStatus := segments.Create(segmentCount, int(d.Threads), d.QueueMode)
