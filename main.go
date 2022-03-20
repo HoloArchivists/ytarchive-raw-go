@@ -76,6 +76,10 @@ func main() {
         return
     }
 
+    if keepFiles {
+        log.Warnf("Temporary files are configured to not be deleted. This will fill up your temporary storage over time.");
+    }
+
     var ipPool *util.IPPool
     if ipPoolFile != "" {
         var err error
@@ -160,6 +164,10 @@ func main() {
     if printNewVersion {
         log.Warnf("New version available: %s", latestVersion)
     }
+    if keepFiles {
+        log.Warnf("Temporary files are configured to not be deleted. This will fill up your temporary storage over time.");
+    }
+
     if res != nil {
         log.Fatalf("Muxing failed: %v", res)
     }

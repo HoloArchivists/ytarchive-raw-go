@@ -19,7 +19,7 @@ import (
 const (
 	VersionMajor = 1
 	VersionMinor = 5
-	VersionPatch = 2
+	VersionPatch = 3
 )
 
 var Commit string
@@ -246,9 +246,13 @@ Using the download-only merger:
 
 Resuming downloads:
         Downloads can be resumed (and reuse already downloaded segments) as long as:
-            - Temporary files are kept (--keep-files)
             - The same temporary directory is used (either specify the same --temp-dir value
               for both runs or use the auto created directory on the second run)
+            - Muxing hasn't finished or temporary files are kept on exit (--keep-files)
+
+        If you're only interested in resuming from crashes/Ctrl+C/etc, you don't need
+        --keep-files. That option is only needed if you want to re-run to try grabbing
+        any segments that got lost even after being requeued.
 
 FORMAT TEMPLATE OPTIONS
         Format template keys provided are made to be the same as they would be for
