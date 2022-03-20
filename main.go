@@ -5,7 +5,9 @@ import (
     "io/ioutil"
     "net/http"
     "os"
+    "path"
 
+    "github.com/gofrs/flock"
     "github.com/lucas-clemente/quic-go/http3"
 
     "github.com/notpeko/ytarchive-raw-go/download"
@@ -39,6 +41,17 @@ func main() {
             log.Fatalf("Unable to create temp dir at '%s': %v", tempDir, err)
         }
     }
+    lock := flock.New(path.Join(tempDir, fregData.Metadata.Id + ".lock"))
+    locked, err := lock.TryLock()
+    if err != nil {
+        log.Fatalf("Failed to lock file: %v", err)
+    }
+    if !locked {
+        log.Error("This video is already being downloaded by another instance.")
+        log.Error("Running two instances on the same video with the same temporary directory is not supported.")
+        os.Exit(1)
+    }
+    defer lock.Unlock()
 
     var rt http.RoundTripper
     if useQuic {

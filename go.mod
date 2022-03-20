@@ -2,7 +2,10 @@ module github.com/notpeko/ytarchive-raw-go
 
 go 1.17
 
-require github.com/lucas-clemente/quic-go v0.24.0
+require (
+	github.com/gofrs/flock v0.8.1
+	github.com/lucas-clemente/quic-go v0.24.0
+)
 
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect
