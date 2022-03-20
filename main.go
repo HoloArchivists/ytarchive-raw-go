@@ -63,6 +63,7 @@ func main() {
     audioTask := &download.DownloadTask {
         Client:         client,
         FailThreshold:  failThreshold,
+        Fsync:          fsync,
         Logger:         log.New("audio.0"),
         Merger:         muxer.AudioMerger(),
         QueueMode:      queueMode,
@@ -74,6 +75,7 @@ func main() {
     videoTask := &download.DownloadTask {
         Client:         client,
         FailThreshold:  failThreshold,
+        Fsync:          fsync,
         Logger:         log.New("video.0"),
         Merger:         muxer.VideoMerger(),
         QueueMode:      queueMode,

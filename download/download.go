@@ -33,6 +33,7 @@ type DownloadResult struct {
 type DownloadTask struct {
     Client         *http.Client
     FailThreshold  uint
+    Fsync          bool
     Logger         *log.Logger
     Merger         merge.Merger
     QueueMode      segments.QueueMode
@@ -330,12 +331,18 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
         return false
     }
 
-    if err = file.Sync(); err != nil {
+    if task.Fsync {
+        if err = file.Sync(); err != nil {
+            os.Remove(file.Name())
+            task.logger().Errorf("Unable to sync segment %d: %v", segment, err)
+            return false
+        }
+    }
+    if err = file.Close(); err != nil {
         os.Remove(file.Name())
-        task.logger().Errorf("Unable to sync segment %d: %v", segment, err)
+        task.logger().Errorf("Unable to close file for segment %d: %v", segment, err)
         return false
     }
-    file.Close()
 
     if err = os.Rename(segmentDownloadPath, segmentDonePath); err != nil {
         os.Remove(segmentDownloadPath)

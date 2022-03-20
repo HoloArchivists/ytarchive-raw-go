@@ -21,6 +21,7 @@ var (
     flagSet        *flag.FlagSet
     failThreshold  uint
     fregData       util.FregJson
+    fsync          bool
     input          string
     keepFiles      bool
     logLevel       string
@@ -48,12 +49,11 @@ Options:
                 Amount of times to retry on connection failure.
                 Default is 3
 
-        --retries AMOUNT
-                Amount of times to retry downloading segments on failure.
-                Failure includes error responses from youtube and connection
-                failures after 'connect-retries' fails.
-
-                Default is 20
+        --fsync
+                If enabled, fsync is called after writing data to segment files.
+                This forces the contents to be written to disk by the OS, which
+                is usually not required but might help avoid issues with remote
+                file systems.
 
         --input FILE
                 Input JSON file. Required.
@@ -88,6 +88,13 @@ Options:
                 are done.
 
                 Default is 'sequential'
+        
+        --retries AMOUNT
+                Amount of times to retry downloading segments on failure.
+                Failure includes error responses from youtube and connection
+                failures after 'connect-retries' fails.
+
+                Default is 20
 
         --temp-dir PATH
                 Temporary directory to store downloaded segments and other
@@ -179,6 +186,8 @@ func init() {
 
     flagSet.BoolVar(&overwriteTemp, "O",              false, "Overwrite temporary merged files.")
     flagSet.BoolVar(&overwriteTemp, "overwrite-temp", false, "Overwrite temporary merged files.")
+
+    flagSet.BoolVar(&fsync, "fsync", false, "Force flushing of OS buffers after writing segment files.")
 
     flagSet.StringVar(&logLevel, "log-level", "info", "Log level to use (debug, info, warn, error, fatal).")
 }
