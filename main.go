@@ -89,7 +89,7 @@ func main() {
         log.Fatalf("Unable to create muxer: %v", err)
     }
 
-    progress := download.NewProgress()
+    progress := download.NewProgress(windowName)
 
     audioTask := &download.DownloadTask {
         Client:         client,

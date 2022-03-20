@@ -50,6 +50,8 @@ func (p *Progress) requeued(segment int) {
     p.parent.mu.Lock()
     defer p.parent.mu.Unlock()
     p.requeues[segment] = struct{}{}
+
+    p.updated()
 }
 
 func (p *Progress) done(segment int, cached bool) {
@@ -74,6 +76,12 @@ func (p *Progress) updated() {
 
     //we hold the lock, safe to call
     p.parent.printProgress()
+}
+
+//NOT thread safe, should NOT acquire locks
+func (p *Progress) pct() float64 {
+    finished := p.cached + p.downloaded + p.failed
+    return float64(finished) / float64(p.total) * 100
 }
 
 //NOT thread safe, should NOT acquire locks
@@ -155,12 +163,15 @@ func (p *Progress) fmt() string {
 
 type TotalProgress struct {
     mu      sync.Mutex
+    name    string
     audio   *Progress
     video   *Progress
 }
 
-func NewProgress() *TotalProgress {
-    p := &TotalProgress {}
+func NewProgress(windowName string) *TotalProgress {
+    p := &TotalProgress {
+        name: windowName,
+    }
     p.audio = &Progress {
         parent:   p,
         requeues: make(map[int]struct{}),
@@ -184,7 +195,16 @@ func (p *TotalProgress) Video() *Progress {
 
 //NOT thread safe, should NOT acquire locks
 func (p *TotalProgress) printProgress() {
-    log.Progress(fmt.Sprintf("Audio: %s, Video: %s", p.audio.fmt(), p.video.fmt()))
+    var title string
+    if p.name != "" {
+        title = fmt.Sprintf("%.1f%%/%.1f%% %s", p.audio.pct(), p.video.pct(), p.name)
+    } else {
+        title = fmt.Sprintf("%.1f%%/%.1f%%", p.audio.pct(), p.video.pct())
+    }
+    log.Progress(
+        title,
+        fmt.Sprintf("Audio: %s, Video: %s", p.audio.fmt(), p.video.fmt()),
+    )
 }
 
 func formatDuration(d time.Duration) string {

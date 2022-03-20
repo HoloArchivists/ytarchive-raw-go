@@ -31,6 +31,9 @@ var levels = map[Level]levelInfo {
     LevelError: levelInfo { name: "error", color: "\033[91m" },
     LevelFatal: levelInfo { name: "fatal", color: "\033[91m" },
 }
+const eraseLine        = "\033[2K"
+const windowTitleBegin = "\033]0;"
+const windowTitleEnd   = "\007"
 
 func ParseLevel(name string) (Level, error) {
     name = strings.ToLower(name)
@@ -55,6 +58,7 @@ type Logger struct {
 var progress struct {
     mu           sync.Mutex
     buf          []byte
+    title        string
     lastProgress []byte
     hasProgress  bool
 }
@@ -69,17 +73,13 @@ func init() {
     stdlog.SetOutput(stdLogProxy {})
 }
 
-func doWrite(isProgress bool, data []byte) (int, error) {
+func doWrite(isProgress bool, title string, data []byte) (int, error) {
     progress.mu.Lock()
     defer progress.mu.Unlock()
 
     progress.buf = progress.buf[:0]
     if progress.hasProgress {
-
-        progress.buf = append(progress.buf, '\r')
-        for i := 0; i < len(progress.lastProgress); i ++ {
-            progress.buf = append(progress.buf, ' ')
-        }
+        progress.buf = append(progress.buf, eraseLine...)
         progress.buf = append(progress.buf, '\r')
         progress.buf = append(progress.buf, data...)
     } else {
@@ -89,6 +89,12 @@ func doWrite(isProgress bool, data []byte) (int, error) {
     if isProgress {
         progress.lastProgress = append(progress.lastProgress[:0], data...)
         progress.hasProgress = true
+        if len(title) > 0 && title != progress.title {
+            progress.title = title
+            progress.buf = append(progress.buf, windowTitleBegin...)
+            progress.buf = append(progress.buf, title...)
+            progress.buf = append(progress.buf, windowTitleEnd...)
+        }
         os.Stderr.Write(progress.buf)
     } else {
         progress.buf = append(progress.buf, progress.lastProgress...)
@@ -100,11 +106,11 @@ func doWrite(isProgress bool, data []byte) (int, error) {
 type stdLogProxy struct {}
 
 func (_ stdLogProxy) Write(p []byte) (int, error) {
-    return doWrite(false, p)
+    return doWrite(false, "", p)
 }
 
-func Progress(line string) {
-    doWrite(true, []byte(line))
+func Progress(title string, line string) {
+    doWrite(true, title, []byte(line))
 }
 
 func SetDefaultLevel(level Level) {
@@ -155,7 +161,7 @@ func (l *Logger) output(level Level, calldepth int, s string) {
         l.buf = append(l.buf, '\n')
     }
     l.buf = append(l.buf, EndColor...)
-    doWrite(false, l.buf)
+    doWrite(false, "", l.buf)
 }
 
 func (l *Logger) logf(level Level, format string, v ...interface{}) {
