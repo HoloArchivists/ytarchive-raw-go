@@ -38,6 +38,10 @@ func (s *SegmentStatus) MissedSegments() []int {
     return s.missed
 }
 
+func (s *SegmentStatus) Total() int {
+    return s.end
+}
+
 // retrieves the next segment to be merged, if available
 // and advances the merge position (so the next call will attempt
 // to fetch the next segment)

@@ -15,6 +15,7 @@ import (
 var _ Muxer = &TcpMuxer {}
 type TcpMuxer struct {
     opts        *MuxerOptions
+    progress    *mergeProgress
     audioMerger *tcpTask
     videoMerger *tcpTask
 }
@@ -30,19 +31,21 @@ func CreateTcpMuxer(options *MuxerOptions) (Muxer, error) {
         bindAddress = "127.0.0.1"
     }
 
+    progress := &mergeProgress {}
 
-    audioMerger, err := createTcpTask(bindAddress, options, "audio")
+    audioMerger, err := createTcpTask(bindAddress, options, progress, "audio")
     if err != nil {
         return nil, err
     }
 
-    videoMerger, err := createTcpTask(bindAddress, options, "video")
+    videoMerger, err := createTcpTask(bindAddress, options, progress, "video")
     if err != nil {
         return nil, err
     }
 
     return &TcpMuxer {
         opts:        options,
+        progress:    progress,
         audioMerger: audioMerger,
         videoMerger: videoMerger,
     }, nil
@@ -60,6 +63,7 @@ func (m *TcpMuxer) Mux() error {
     if err := muxFfmpeg(m.opts, m.audioMerger.addr(), m.videoMerger.addr()); err != nil {
         return err
     }
+    m.progress.done()
 
     m.audioMerger.listener.Close()
     m.videoMerger.listener.Close()
@@ -81,11 +85,13 @@ type tcpTask struct {
     deleteSegments bool
     listener       net.Listener
     logger         *log.Logger
+    progress       *mergeProgress
+    which          string
     segments       []string
     wg             sync.WaitGroup
 }
 
-func createTcpTask(bindAddress string, options *MuxerOptions, which string) (*tcpTask, error) {
+func createTcpTask(bindAddress string, options *MuxerOptions, progress *mergeProgress, which string) (*tcpTask, error) {
     l, err := net.Listen("tcp", net.JoinHostPort(bindAddress, "0"))
     if err != nil {
         return nil, fmt.Errorf("Unable to start listening: %v", err)
@@ -95,6 +101,8 @@ func createTcpTask(bindAddress string, options *MuxerOptions, which string) (*tc
         deleteSegments: options.DisableResume,
         listener:       l,
         logger:         options.Logger.SubLogger(which),
+        progress:       progress,
+        which:          which,
     }
 
     task.logger.Debugf("Listening on address %v", l.Addr())
@@ -124,6 +132,8 @@ func (t *tcpTask) Merge(status *segments.SegmentStatus) {
         return
     }
     t.logger.Info("Got connection")
+
+    t.progress.initTotal(status.Total())
 
     misses := 0
     for {
@@ -155,6 +165,12 @@ func (t *tcpTask) Merge(status *segments.SegmentStatus) {
                     t.segments = append(t.segments, result.Filename)
                 }
             }
+        }
+
+        if t.which == "audio" {
+            t.progress.mergedAudio()
+        } else {
+            t.progress.mergedVideo()
         }
     }
 }

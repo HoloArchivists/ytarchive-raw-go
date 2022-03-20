@@ -20,6 +20,23 @@ const (
 )
 const EndColor = "\033[0m"
 
+type ProgressCategory int
+const (
+    ProgressAudioDownload ProgressCategory = iota
+    ProgressVideoDownload
+    ProgressMerge
+)
+var progressOrder = []ProgressCategory {
+    ProgressAudioDownload,
+    ProgressVideoDownload,
+    ProgressMerge,
+}
+var progressNames = map[ProgressCategory]string {
+    ProgressAudioDownload: "audio",
+    ProgressVideoDownload: "video",
+    ProgressMerge:         "merge",
+}
+
 type levelInfo struct {
     name  string
     color string
@@ -31,9 +48,13 @@ var levels = map[Level]levelInfo {
     LevelError: levelInfo { name: "error", color: "\033[91m" },
     LevelFatal: levelInfo { name: "fatal", color: "\033[91m" },
 }
-const eraseLine        = "\033[2K"
-const windowTitleBegin = "\033]0;"
-const windowTitleEnd   = "\007"
+const eraseRestOfLine  = "\033[K"
+
+func moveCursorUp(buf *[]byte, lines int) {
+    *buf = append(*buf, "\033["...)
+    itoa(buf, lines, -1)
+    *buf = append(*buf, 'A')
+}
 
 func ParseLevel(name string) (Level, error) {
     name = strings.ToLower(name)
@@ -53,14 +74,18 @@ type Logger struct {
     tag         string
 }
 
-// used to track progress updates (which use \r to replace the previous one)
-// but if something got logged after the last update, a new line has to be printed
+type progressStatus struct {
+    title   string
+    message string
+}
+
 var progress struct {
-    mu           sync.Mutex
-    buf          []byte
-    title        string
-    lastProgress []byte
-    hasProgress  bool
+    mu          sync.Mutex
+    buf         []byte
+    titleBuf    []byte
+    status      map[ProgressCategory]progressStatus
+    windowName  string
+    wroteStatus bool
 }
 
 var DefaultLogger *Logger
@@ -69,48 +94,82 @@ func init() {
     DefaultLogger = &Logger {
         extraFrames: 1,
     }
+    progress.status = make(map[ProgressCategory]progressStatus)
     stdlog.SetFlags(stdlog.Ldate | stdlog.Lmicroseconds | stdlog.Lshortfile)
     stdlog.SetOutput(stdLogProxy {})
 }
 
-func doWrite(isProgress bool, title string, data []byte) (int, error) {
+func doWrite(isProgress bool, data []byte) (int, error) {
     progress.mu.Lock()
     defer progress.mu.Unlock()
 
     progress.buf = progress.buf[:0]
-    if progress.hasProgress {
-        progress.buf = append(progress.buf, eraseLine...)
-        progress.buf = append(progress.buf, '\r')
-        progress.buf = append(progress.buf, data...)
-    } else {
-        progress.buf = append(progress.buf, data...)
+    progress.titleBuf = progress.titleBuf[:0]
+
+    if progress.wroteStatus {
+        moveCursorUp(&progress.buf, len(progressOrder))
     }
 
-    if isProgress {
-        progress.lastProgress = append(progress.lastProgress[:0], data...)
-        progress.hasProgress = true
-        if len(title) > 0 && title != progress.title {
-            progress.title = title
-            progress.buf = append(progress.buf, windowTitleBegin...)
-            progress.buf = append(progress.buf, title...)
-            progress.buf = append(progress.buf, windowTitleEnd...)
-        }
-        os.Stderr.Write(progress.buf)
-    } else {
-        progress.buf = append(progress.buf, progress.lastProgress...)
-        os.Stderr.Write(progress.buf)
+    if len(data) > 0 {
+        progress.buf = append(progress.buf, data...)
+        progress.buf = append(progress.buf, eraseRestOfLine...)
+        progress.buf = append(progress.buf, '\n')
     }
+
+    for i, c := range progressOrder {
+        if i > 0 {
+            progress.titleBuf = append(progress.titleBuf, '/')
+        }
+
+        progress.buf = append(progress.buf, progressNames[c]...)
+        progress.buf = append(progress.buf, ": "...)
+        s, ok := progress.status[c]
+        if !ok {
+            progress.buf = append(progress.buf, "???"...)
+            progress.titleBuf = append(progress.titleBuf, "???"...)
+        } else {
+            progress.buf = append(progress.buf, s.message...)
+            progress.titleBuf = append(progress.titleBuf, s.title...)
+        }
+        progress.buf = append(progress.buf, eraseRestOfLine...)
+        progress.buf = append(progress.buf, '\n')
+    }
+    progress.buf = append(progress.buf, "\033]0;"...)
+    progress.buf = append(progress.buf, progress.titleBuf...)
+    if progress.windowName != "" {
+        progress.buf = append(progress.buf, ' ')
+        progress.buf = append(progress.buf, progress.windowName...)
+    }
+    progress.buf = append(progress.buf, '\007')
+    progress.wroteStatus = true
+
+    os.Stderr.Write(progress.buf)
+
     return len(data), nil
 }
 
 type stdLogProxy struct {}
 
 func (_ stdLogProxy) Write(p []byte) (int, error) {
-    return doWrite(false, "", p)
+    return doWrite(false, p)
 }
 
-func Progress(title string, line string) {
-    doWrite(true, title, []byte(line))
+func SetWindowName(name string) {
+    progress.mu.Lock()
+    defer progress.mu.Unlock()
+    progress.windowName = name
+}
+
+func Progress(category ProgressCategory, title string, message string) {
+    func() {
+        progress.mu.Lock()
+        defer progress.mu.Unlock()
+        progress.status[category] = progressStatus {
+            title:   title,
+            message: message,
+        }
+    }()
+    doWrite(true, nil)
 }
 
 func SetDefaultLevel(level Level) {
@@ -157,11 +216,11 @@ func (l *Logger) output(level Level, calldepth int, s string) {
 
     formatHeader(&l.buf, l.tag, file, line)
     l.buf = append(l.buf, s...)
-    if len(s) == 0 || s[len(s)-1] != '\n' {
-        l.buf = append(l.buf, '\n')
+    if len(s) > 0 && s[len(s)-1] == '\n' {
+        l.buf = l.buf[:len(l.buf) - 1]
     }
     l.buf = append(l.buf, EndColor...)
-    doWrite(false, "", l.buf)
+    doWrite(false, l.buf)
 }
 
 func (l *Logger) logf(level Level, format string, v ...interface{}) {

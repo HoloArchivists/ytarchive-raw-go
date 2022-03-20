@@ -15,6 +15,7 @@ import (
 var _ Muxer = &DownloadOnlyMuxer {}
 type DownloadOnlyMuxer struct {
     opts        *MuxerOptions
+    progress    *mergeProgress
     audioMerger *downloadOnlyTask
     videoMerger *downloadOnlyTask
 }
@@ -75,10 +76,12 @@ func MergeDownloadInfoJson(options *MuxerOptions, path string) error {
 }
 
 func CreateDownloadOnlyMuxer(options *MuxerOptions) (Muxer, error) {
+    progress := &mergeProgress {}
     return &DownloadOnlyMuxer {
         opts:        options,
-        audioMerger: createDownloadOnlyTask(options, "audio"),
-        videoMerger: createDownloadOnlyTask(options, "video"),
+        progress:    progress,
+        audioMerger: createDownloadOnlyTask(options, progress, "audio"),
+        videoMerger: createDownloadOnlyTask(options, progress, "video"),
     }, nil
 }
 
@@ -93,6 +96,7 @@ func (m *DownloadOnlyMuxer) VideoMerger() Merger {
 func (m *DownloadOnlyMuxer) Mux() error {
     m.audioMerger.wg.Wait()
     m.videoMerger.wg.Wait()
+    m.progress.done()
 
     d := downloadJson {
         FregData:      m.opts.FregData,
@@ -114,13 +118,17 @@ func (m *DownloadOnlyMuxer) OutputFilePath() string {
 var _ Merger = &downloadOnlyTask {}
 type downloadOnlyTask struct {
     logger   *log.Logger
+    progress *mergeProgress
+    which    string
     wg       sync.WaitGroup
     segments []segments.SegmentResult
 }
 
-func createDownloadOnlyTask(options *MuxerOptions, which string) *downloadOnlyTask {
+func createDownloadOnlyTask(options *MuxerOptions, progress *mergeProgress, which string) *downloadOnlyTask {
     task := &downloadOnlyTask {
-        logger: options.Logger.SubLogger(which),
+        logger:   options.Logger.SubLogger(which),
+        progress: progress,
+        which:    which,
     }
     task.wg.Add(1)
     return task
@@ -128,6 +136,8 @@ func createDownloadOnlyTask(options *MuxerOptions, which string) *downloadOnlyTa
 
 func (t *downloadOnlyTask) Merge(status *segments.SegmentStatus) {
     defer t.wg.Done()
+
+    t.progress.initTotal(status.Total())
 
     misses := 0
     for {
@@ -148,6 +158,12 @@ func (t *downloadOnlyTask) Merge(status *segments.SegmentStatus) {
         misses = 0
 
         t.segments = append(t.segments, result)
+
+        if t.which == "audio" {
+            t.progress.mergedAudio()
+        } else {
+            t.progress.mergedVideo()
+        }
     }
 }
 

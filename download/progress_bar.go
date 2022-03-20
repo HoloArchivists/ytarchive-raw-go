@@ -36,6 +36,7 @@ func (p *Progress) init(totalSegments int, expire *time.Time) {
     p.total = totalSegments
     p.start = time.Now()
     p.expire = expire
+    p.updated()
 }
 
 func (p *Progress) lost() {
@@ -163,15 +164,12 @@ func (p *Progress) fmt() string {
 
 type TotalProgress struct {
     mu      sync.Mutex
-    name    string
     audio   *Progress
     video   *Progress
 }
 
-func NewProgress(windowName string) *TotalProgress {
-    p := &TotalProgress {
-        name: windowName,
-    }
+func NewProgress() *TotalProgress {
+    p := &TotalProgress {}
     p.audio = &Progress {
         parent:   p,
         requeues: make(map[int]struct{}),
@@ -195,16 +193,8 @@ func (p *TotalProgress) Video() *Progress {
 
 //NOT thread safe, should NOT acquire locks
 func (p *TotalProgress) printProgress() {
-    var title string
-    if p.name != "" {
-        title = fmt.Sprintf("%.1f%%/%.1f%% %s", p.audio.pct(), p.video.pct(), p.name)
-    } else {
-        title = fmt.Sprintf("%.1f%%/%.1f%%", p.audio.pct(), p.video.pct())
-    }
-    log.Progress(
-        title,
-        fmt.Sprintf("Audio: %s, Video: %s", p.audio.fmt(), p.video.fmt()),
-    )
+    log.Progress(log.ProgressAudioDownload, fmt.Sprintf("%.1f%%", p.audio.pct()), p.audio.fmt())
+    log.Progress(log.ProgressVideoDownload, fmt.Sprintf("%.1f%%", p.video.pct()), p.video.fmt())
 }
 
 func formatDuration(d time.Duration) string {

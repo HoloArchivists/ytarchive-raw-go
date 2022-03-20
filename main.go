@@ -103,7 +103,8 @@ func main() {
         log.Error("Another instance is already writing to this output file.")
     })()
 
-    progress := download.NewProgress(windowName)
+    log.SetWindowName(windowName)
+    progress := download.NewProgress()
 
     audioTask := &download.DownloadTask {
         Client:         client,

@@ -16,23 +16,27 @@ import (
 var _ Muxer = &ConcatMuxer {}
 type ConcatMuxer struct {
     opts        *MuxerOptions
+    progress    *mergeProgress
     audioMerger *concatTask
     videoMerger *concatTask
 }
 
 func CreateConcatMuxer(options *MuxerOptions) (Muxer, error) {
-    audioMerger, err := createConcatTask(options, "audio")
+    progress := &mergeProgress {}
+
+    audioMerger, err := createConcatTask(options, progress, "audio")
     if err != nil {
         return nil, err
     }
 
-    videoMerger, err := createConcatTask(options, "video")
+    videoMerger, err := createConcatTask(options, progress, "video")
     if err != nil {
         return nil, err
     }
 
     return &ConcatMuxer {
         opts:        options,
+        progress:    progress,
         audioMerger: audioMerger,
         videoMerger: videoMerger,
     }, nil
@@ -51,9 +55,12 @@ func (m *ConcatMuxer) Mux() error {
     m.audioMerger.wg.Wait()
     m.videoMerger.wg.Wait()
 
+    m.opts.Logger.Info("Merging into final file, progress won't be updated until it's done")
+
     if err := muxFfmpeg(m.opts, m.audioMerger.targetFile, m.videoMerger.targetFile); err != nil {
         return err
     }
+    m.progress.done()
 
     m.opts.Logger.Debug("Download succeeded, removing merged segments")
     if err := os.Remove(m.audioMerger.targetFile); err != nil {
@@ -79,12 +86,14 @@ var _ Merger = &concatTask {}
 type concatTask struct {
     deleteSegments bool
     logger         *log.Logger
+    progress       *mergeProgress
+    targetFile     string
+    which          string
     wg             sync.WaitGroup
     segments       []string
-    targetFile     string
 }
 
-func createConcatTask(options *MuxerOptions, which string) (*concatTask, error) {
+func createConcatTask(options *MuxerOptions, progress *mergeProgress, which string) (*concatTask, error) {
     file := path.Join(options.TempDir, fmt.Sprintf("merged-%s.%s", options.FregData.Metadata.Id, which))
     if util.FileNotEmpty(file) {
         if !options.OverwriteTemp {
@@ -98,7 +107,9 @@ func createConcatTask(options *MuxerOptions, which string) (*concatTask, error) 
     task := &concatTask {
         deleteSegments: options.DisableResume,
         logger:         options.Logger.SubLogger(which),
+        progress:       progress,
         targetFile:     file,
+        which:          which,
     }
     task.wg.Add(1)
     return task, nil
@@ -123,6 +134,8 @@ func copyFile(from string, to string) error {
 
 func (t *concatTask) Merge(status *segments.SegmentStatus) {
     defer t.wg.Done()
+
+    t.progress.initTotal(status.Total())
 
     misses := 0
     for {
@@ -153,6 +166,12 @@ func (t *concatTask) Merge(status *segments.SegmentStatus) {
                     t.segments = append(t.segments, result.Filename)
                 }
             }
+        }
+
+        if t.which == "audio" {
+            t.progress.mergedAudio()
+        } else {
+            t.progress.mergedVideo()
         }
     }
 }
