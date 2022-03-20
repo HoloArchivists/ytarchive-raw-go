@@ -22,6 +22,9 @@ func main() {
     }
     task.Start()
     res := task.Wait()
+    if len(res.LostSegments) > 0 {
+        log.Warnf("Lost %d segment(s) %v out of %d", len(res.LostSegments), res.LostSegments, res.TotalSegments)
+    }
     if res.Error != nil {
         log.Errorf("Download task failed: %v", res.Error)
     } else {

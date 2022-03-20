@@ -13,13 +13,13 @@ const ProgressBarPrintInterval = 5
 type progressBar struct {
     finished      int
     mu            sync.Mutex
-    printFn       func(string, float64)
+    printFn       func(string, int, int)
     progress      []bool
     progressIndex map[int]int
     total         int
 }
 
-func makeProgressBar(total int, printFn func(string, float64)) *progressBar {
+func makeProgressBar(total int, printFn func(string, int, int)) *progressBar {
     bar := &progressBar {
         printFn:       printFn,
         progress:      make([]bool, ProgressBarLength),
@@ -60,6 +60,6 @@ func (p *progressBar) printProgress() {
             b.WriteString(ProgressBarEmptySymbol)
         }
     }
-    p.printFn(b.String(), float64(p.finished) / float64(p.total))
+    p.printFn(b.String(), p.finished, p.total)
 }
 

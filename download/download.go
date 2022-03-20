@@ -18,8 +18,9 @@ const RetryThreshold = 3
 var defaultClient = &http.Client {}
 
 type DownloadResult struct {
-    Error        error
-    LostSegments []int
+    Error         error
+    LostSegments  []int
+    TotalSegments int
 }
 
 type DownloadTask struct {
@@ -79,8 +80,11 @@ func (d *DownloadTask) run() {
         d.result.Error = err
         return
     }
-    pbar := makeProgressBar(segmentStatus.end, func(msg string, progress float64) {
-        d.logger().Infof("|%s| %.2f%%", msg, progress * 100)
+    d.result.TotalSegments = segmentStatus.end
+
+    pbar := makeProgressBar(segmentStatus.end, func(msg string, finished int, total int) {
+        progress := float64(finished) / float64(total)
+        d.logger().Infof("|%s| %.2f%% (%d/%d)", msg, progress * 100, finished, total)
     })
 
     mergeTask := makeMergeTask(d, segmentStatus, d.TmpFile)

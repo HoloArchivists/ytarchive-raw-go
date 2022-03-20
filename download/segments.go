@@ -94,7 +94,7 @@ func newSegStatus(task *DownloadTask, url string) (*segmentStatus, error) {
     ret := &segmentStatus {
         end:         segmentCount,
         groups:      make([]segmentRange, 0),
-        mergedCount: -1,
+        mergedCount: 0,
         segments:    make(map[int]segmentResult),
     }
 
@@ -111,7 +111,7 @@ func newSegStatus(task *DownloadTask, url string) (*segmentStatus, error) {
         } else {
             r := segmentRange {
                 start: lastSeg + 1,
-                end:   ret.end,
+                end:   ret.end - 1,
             }
             ret.groups = append(ret.groups, r)
             break
