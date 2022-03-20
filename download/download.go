@@ -46,6 +46,7 @@ type DownloadTask struct {
     started        bool
     id             string
     itag           int
+    expire         *time.Time
 }
 
 func (d *DownloadTask) Start() {
@@ -98,6 +99,20 @@ func (d *DownloadTask) Start() {
         d.logger().Fatalf("Unable to parse itag value '%s' into an int", itagString)
     }
     d.itag = itag
+
+    //not a failure if missing, just won't warn on ETA >= remaining duration
+    if !query.Has("expire") {
+        d.logger().Warn("Unable to find 'expire' query parameter")
+    } else {
+        expireString := query.Get("expire")
+        expire, err := strconv.ParseInt(expireString, 10, 64)
+        if err != nil {
+            d.logger().Warnf("Unable to parse 'expire' parameter: %v", err)
+        } else {
+            t := time.Unix(expire, 0)
+            d.expire = &t
+        }
+    }
 
     d.wg.Add(1)
     d.started = true
@@ -165,7 +180,11 @@ func (d *DownloadTask) run() {
             elapsed := time.Since(start)
             etaSeconds := (1.0 / progress) * elapsed.Seconds()
             eta := time.Duration(int64(etaSeconds)) * time.Second
-            d.logger().Infof("|%s| %.2f%% (%d/%d, eta %v)", msg, progress * 100, finished, total, eta)
+            var color string
+            if d.expire != nil && start.Add(eta).After(*d.expire) {
+                color = "\033[91m"
+            }
+            d.logger().Infof("|%s| %.2f%% %s(%d/%d, eta %v)", msg, progress * 100, color, finished, total, eta)
         } else {
             d.logger().Infof("|%s| %.2f%% (%d/%d, eta unknown)", msg, progress * 100, finished, total)
         }
