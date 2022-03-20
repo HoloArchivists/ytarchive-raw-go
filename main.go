@@ -31,6 +31,11 @@ func main() {
     colorable.EnableColorsStdout(nil)
     parseArgs()
 
+    latestVersion, printNewVersion := versionCheck()
+    if printNewVersion {
+        log.Warnf("New version available: %s", latestVersion)
+    }
+
     if tempDir == "" {
         var err error
         tempDir, err = ioutil.TempDir("", fmt.Sprintf("ytarchive-%s-", fregData.Metadata.Id))
@@ -144,6 +149,12 @@ func main() {
 
     log.Info("Waiting for muxing to finish")
     res := <-muxerResult
+
+    //print again once it's done so it doesn't get buried in newer logs
+    if printNewVersion {
+        log.Warnf("New version available: %s", latestVersion)
+    }
+
     if res != nil {
         log.Fatalf("Muxing failed: %v", res)
     }
