@@ -10,7 +10,9 @@ import (
     "strings"
 
     "github.com/notpeko/ytarchive-raw-go/download"
+    "github.com/notpeko/ytarchive-raw-go/download/segments"
     "github.com/notpeko/ytarchive-raw-go/log"
+    "github.com/notpeko/ytarchive-raw-go/util"
 )
 
 const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s).mkv"
@@ -18,13 +20,14 @@ const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s).mkv"
 var (
     flagSet        *flag.FlagSet
     failThreshold  uint
-    fregData       FregJson
+    fregData       util.FregJson
     input          string
     keepFiles      bool
     logLevel       string
     output         string
+    overwriteTemp  bool
     queue          string
-    queueMode      download.QueueMode
+    queueMode      segments.QueueMode
     retryThreshold uint
     tempDir        string
     threads        uint
@@ -67,6 +70,13 @@ Options:
                 formatting similar to youtube-dl, with a subset of keys.
                 See FORMAT OPTIONS below for a list of available keys.
                 Default is '%[2]s'
+
+        -O, --overwrite-temp
+                Overwrite temporary files used for merging. If disabled,
+                downloading stops if those files already exist and are not
+                empty. If enabled, temporary files are deleted and recreated.
+
+                This does not affect raw segment files, only merging files.
 
         -q, --queue-mode MODE
                 Order to download segments (sequential, out-of-order).
@@ -167,6 +177,9 @@ func init() {
     flagSet.BoolVar(&verbose, "v",       false, "Enable debug logging. Overrides log-level.")
     flagSet.BoolVar(&verbose, "verbose", false, "Enable debug logging. Overrides log-level.")
 
+    flagSet.BoolVar(&overwriteTemp, "O",              false, "Overwrite temporary merged files.")
+    flagSet.BoolVar(&overwriteTemp, "overwrite-temp", false, "Overwrite temporary merged files.")
+
     flagSet.StringVar(&logLevel, "log-level", "info", "Log level to use (debug, info, warn, error, fatal).")
 }
 
@@ -184,12 +197,10 @@ func parseArgs() {
     log.SetDefaultLevel(level)
 
     switch strings.ToLower(queue) {
-    case "auto":
-        queueMode = download.QueueAuto
     case "sequential":
-        queueMode = download.QueueSequential
+        queueMode = segments.QueueSequential
     case "out-of-order":
-        queueMode = download.QueueOutOfOrder
+        queueMode = segments.QueueOutOfOrder
     default:
         log.Fatalf("Invalid queue mode '%s'", queue)
     }
@@ -210,10 +221,7 @@ func parseArgs() {
     if err != nil {
         log.Fatalf("Invalid output template: %v", err)
     }
-
-    if !strings.HasSuffix(output, ".mkv") {
-        log.Fatal("Output should be a .mkv file")
-    }
+    output = output + ".mkv"
 
     log.Infof("Saving output to %s", output)
 }

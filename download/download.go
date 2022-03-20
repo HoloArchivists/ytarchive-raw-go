@@ -12,15 +12,12 @@ import (
     "sync"
     "time"
 
+    "github.com/notpeko/ytarchive-raw-go/download/segments"
     "github.com/notpeko/ytarchive-raw-go/log"
+    "github.com/notpeko/ytarchive-raw-go/merge"
+    "github.com/notpeko/ytarchive-raw-go/util"
 )
 
-type QueueMode int
-const (
-    QueueAuto       QueueMode = iota
-    QueueSequential
-    QueueOutOfOrder
-)
 
 const DefaultFailThreshold = 20
 const DefaultRetryThreshold = 3
@@ -35,11 +32,10 @@ type DownloadResult struct {
 
 type DownloadTask struct {
     Client         *http.Client
-    DeleteSegments bool
     FailThreshold  uint
     Logger         *log.Logger
-    MergeFile      string
-    QueueMode      QueueMode
+    Merger         merge.Merger
+    QueueMode      segments.QueueMode
     RetryThreshold uint
     SegmentDir     string
     Threads        uint
@@ -69,8 +65,8 @@ func (d *DownloadTask) Start() {
     if len(d.Url) == 0 {
         log.Fatal("Empty URL")
     }
-    if len(d.MergeFile) == 0 {
-        log.Fatal("Empty MergeFile")
+    if d.Merger == nil {
+        log.Fatal("Missing Merger")
     }
     if len(d.SegmentDir) == 0 {
         log.Fatal("Empty SegmentDir")
@@ -126,22 +122,48 @@ func (d *DownloadTask) logger() *log.Logger {
     return log.DefaultLogger
 }
 
+func (d *DownloadTask) getSegmentCount() (int, error) {
+    d.logger().Info("Getting total segments")
+
+    url := getSegUrl(d.Url, 0)
+    resp, err := d.client().Get(url)
+    if err != nil {
+        return -1, err
+    }
+    defer resp.Body.Close()
+
+    header := resp.Header.Get("x-head-seqnum")
+    if header == "" {
+        return -1, fmt.Errorf("Unable to get segment count, response status: %s", resp.Status)
+    }
+
+    segmentCount, err := strconv.Atoi(header)
+    if err != nil {
+        return -1, fmt.Errorf("Unable to parse x-head-seqnum '%s': %v", header, err)
+    }
+    segmentCount = 1000
+    d.logger().Infof("Total segments: %d", segmentCount)
+
+    return segmentCount, nil
+}
+
 func (d *DownloadTask) run() {
     defer d.wg.Done()
 
-    segmentStatus, err := newSegStatus(d, d.Url, d.QueueMode)
+    segmentCount, err := d.getSegmentCount()
     if err != nil {
         d.result.Error = err
         return
     }
-    d.result.TotalSegments = segmentStatus.end
+    d.result.TotalSegments = segmentCount
 
-    pbar := makeProgressBar(segmentStatus.end, func(msg string, finished int, total int) {
+    pbar := makeProgressBar(segmentCount, func(msg string, finished int, total int) {
         progress := float64(finished) / float64(total)
         d.logger().Infof("|%s| %.2f%% (%d/%d)", msg, progress * 100, finished, total)
     })
 
-    mergeTask := makeMergeTask(d, segmentStatus, d.MergeFile)
+    segmentStatus := segments.Create(segmentCount, int(d.Threads), d.QueueMode)
+    go d.Merger.Merge(segmentStatus)
 
     var downloadGroup sync.WaitGroup
     for i := uint(0); i < d.Threads; i++ {
@@ -156,19 +178,32 @@ func (d *DownloadTask) run() {
     }
 
     downloadGroup.Wait()
-    mergeTask.wait()
-    d.result.LostSegments = mergeTask.notMerged
+    d.Merger.Wait()
+    d.result.LostSegments = segmentStatus.MissedSegments()
+}
+
+func getSegUrl(baseUrl string, seg int) string {
+    url, err := url.Parse(baseUrl)
+    if err != nil {
+        log.Fatalf("Invalid url '%s': %v", baseUrl, err)
+    }
+
+    q := url.Query()
+    q.Set("sq", fmt.Sprintf("%d", seg))
+    url.RawQuery = q.Encode()
+
+    return url.String()
 }
 
 func downloadTask(
     threadNumber uint,
     task *DownloadTask,
     wg *sync.WaitGroup,
-    status *segmentStatus,
+    status *segments.SegmentStatus,
     done func(int),
 ) {
     defer wg.Done()
-    queue := status.createQueue(int(threadNumber))
+    queue := status.CreateQueue(int(threadNumber))
 
     failCount := uint(0)
     seg := -1
@@ -183,11 +218,12 @@ func downloadTask(
             if seg == -1 {
                 panic("Segment == -1")
             }
+            task.logger().Debugf("Getting segment %d", seg)
         }
 
         //the last segment often isn't available, so use less retries for it
         fails := task.FailThreshold
-        if seg == status.end - 1 {
+        if status.IsLast(seg) {
             //at least 5
             fails = task.FailThreshold / 4
             if fails < 5 {
@@ -198,7 +234,7 @@ func downloadTask(
         if failCount >= fails {
             task.logger().Warnf("Giving up segment %d", seg)
 
-            status.downloaded(seg, segmentResult { ok: false })
+            status.Downloaded(seg, segments.SegmentResult { Ok: false })
             done(seg)
 
             seg = -1
@@ -241,17 +277,17 @@ func segmentBaseFileName(task *DownloadTask, segment int) string {
     )
 }
 
-func downloadSegment(task *DownloadTask, status *segmentStatus, segment int) bool {
+func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment int) bool {
     segmentBasePath := segmentBaseFileName(task, segment)
     segmentDownloadPath := segmentBasePath + ".incomplete"
     segmentDonePath := segmentBasePath + ".done"
 
     //already downloaded
-    if info, err := os.Stat(segmentDonePath); err == nil && info.Size() > 0 {
+    if util.FileNotEmpty(segmentDonePath) {
         task.logger().Debugf("Segment %d already downloaded", segment)
-        status.downloaded(segment, segmentResult {
-            ok: true,
-            filename: segmentDonePath,
+        status.Downloaded(segment, segments.SegmentResult {
+            Ok: true,
+            Filename: segmentDonePath,
         })
         return true
     }
@@ -310,9 +346,9 @@ func downloadSegment(task *DownloadTask, status *segmentStatus, segment int) boo
     }
     task.logger().Debugf("Downloaded segment %d", segment)
 
-    status.downloaded(segment, segmentResult {
-        ok: true,
-        filename: segmentDonePath,
+    status.Downloaded(segment, segments.SegmentResult {
+        Ok: true,
+        Filename: segmentDonePath,
     })
 
     return true

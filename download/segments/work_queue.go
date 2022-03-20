@@ -1,16 +1,16 @@
-package download
+package segments
 
 import (
     "fmt"
     "sync"
 )
 
-type workQueue interface {
+type WorkQueue interface {
     NextSegment() (int, bool)
 }
 
 type workScheduler interface {
-    CreateQueue(worker int) workQueue
+    CreateQueue(worker int) WorkQueue
 }
 
 // Simple, sequential scheduler. Workers get the next segment from a shared counter
@@ -28,11 +28,11 @@ func makeSequentialScheduler(totalSegments int) workScheduler {
     }
 }
 
-func (s *sequentialScheduler) CreateQueue(_ int) workQueue {
+func (s *sequentialScheduler) CreateQueue(_ int) WorkQueue {
     return &sequentialQueue { sched: s }
 }
 
-var _ workQueue = &sequentialQueue {}
+var _ WorkQueue = &sequentialQueue {}
 type sequentialQueue struct {
     sched *sequentialScheduler
 }
@@ -84,7 +84,7 @@ func makeBatchedScheduler(segments int, threads int) workScheduler {
     return s
 }
 
-func (s *batchedScheduler) CreateQueue(worker int) workQueue {
+func (s *batchedScheduler) CreateQueue(worker int) WorkQueue {
     if worker < 0 || worker >= len(s.batches) {
         panic(fmt.Sprintf("Invalid worker number %d (worker count: %d)", worker, len(s.batches)))
     }
@@ -98,7 +98,7 @@ func (s *batchedScheduler) CreateQueue(worker int) workQueue {
     return b
 }
 
-var _ workQueue = &batchRange {}
+var _ WorkQueue = &batchRange {}
 type batchRange struct {
     sched    *batchedScheduler
     mu       sync.Mutex

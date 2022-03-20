@@ -10,6 +10,7 @@ import (
 
     "github.com/notpeko/ytarchive-raw-go/download"
     "github.com/notpeko/ytarchive-raw-go/log"
+    "github.com/notpeko/ytarchive-raw-go/merge"
 )
 
 func printResult(logger *log.Logger, res *download.DownloadResult) {
@@ -21,15 +22,6 @@ func printResult(logger *log.Logger, res *download.DownloadResult) {
     } else {
         logger.Info("Download succeeded")
     }
-}
-
-func createMergedFile(which string) string {
-    f, err := ioutil.TempFile(tempDir, fmt.Sprintf("merged-%s.%s.", fregData.Metadata.Id, which))
-    if err != nil {
-        log.Fatalf("Unable to create merged file for %s: %v", which, err)
-    }
-    f.Close()
-    return f.Name()
 }
 
 func main() {
@@ -56,12 +48,23 @@ func main() {
         Transport: rt,
     }
 
+    muxer, err := merge.CreateBestMuxer(&merge.MuxerOptions {
+        DeleteSegments: !keepFiles,
+        FinalFile:      output,
+        FregData:       &fregData,
+        Logger:         log.New("muxer.0"),
+        OverwriteTemp:  overwriteTemp,
+        TempDir:        tempDir,
+    })
+    if err != nil {
+        log.Fatalf("Unable to create muxer: %v", err)
+    }
+
     audioTask := &download.DownloadTask {
         Client:         client,
-        DeleteSegments: !keepFiles,
         FailThreshold:  failThreshold,
         Logger:         log.New("audio.0"),
-        MergeFile:      createMergedFile("audio"),
+        Merger:         muxer.AudioMerger(),
         QueueMode:      queueMode,
         RetryThreshold: retryThreshold,
         SegmentDir:     tempDir,
@@ -70,10 +73,9 @@ func main() {
     }
     videoTask := &download.DownloadTask {
         Client:         client,
-        DeleteSegments: !keepFiles,
         FailThreshold:  failThreshold,
         Logger:         log.New("video.0"),
-        MergeFile:      createMergedFile("video"),
+        Merger:         muxer.VideoMerger(),
         QueueMode:      queueMode,
         RetryThreshold: retryThreshold,
         SegmentDir:     tempDir,
@@ -89,5 +91,8 @@ func main() {
 
     printResult(audioTask.Logger, audioRes)
     printResult(videoTask.Logger, videoRes)
+
+    log.Info("Download finished, muxing...")
+    muxer.Mux()
 }
 

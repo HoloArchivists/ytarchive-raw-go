@@ -70,6 +70,10 @@ func New(tag string) *Logger {
     }
 }
 
+func (l *Logger) SubLogger(tag string) *Logger {
+    return New(fmt.Sprintf("%s.%s", l.tag, tag))
+}
+
 func (l *Logger) output(level Level, calldepth int, s string) {
     now := time.Now().UTC()
     var file string

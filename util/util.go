@@ -1,7 +1,8 @@
-package main
+package util
 
 import (
     "fmt"
+    "os"
     "regexp"
     "strings"
     "sync"
@@ -9,6 +10,13 @@ import (
 
     "github.com/notpeko/ytarchive-raw-go/log"
 )
+
+func FileNotEmpty(path string) bool {
+    if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+        return true
+    }
+    return false
+}
 
 var bestVideoFormats = []int{
     337, 315, 266, 138, // 2160p60
