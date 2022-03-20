@@ -55,9 +55,13 @@ func (p *Progress) done(cached bool) {
 
 //NOT thread safe, should NOT acquire locks
 func (p *Progress) fmt() string {
+    if p.total == -1 {
+        return fmt.Sprintf("%s0%% (0/???, not started yet)%s", colorYellow, colorReset)
+    }
+
     finished := p.cached + p.downloaded
     if finished == p.total {
-        return fmt.Sprintf("%s100%% [%d/%d]%s in %v", colorGreen, finished, p.total, colorReset, p.end.Sub(p.start).Round(time.Second))
+        return fmt.Sprintf("%s100%% (%d/%d in %v)%s", colorGreen, finished, p.total, p.end.Sub(p.start).Round(time.Second), colorReset)
     }
 
     progress := float64(finished) / float64(p.total)
@@ -91,9 +95,11 @@ func NewProgress() *TotalProgress {
     p := &TotalProgress {}
     p.audio = &Progress {
         parent: p,
+        total:  -1,
     }
     p.video = &Progress {
         parent: p,
+        total:  -1,
     }
     return p
 }
