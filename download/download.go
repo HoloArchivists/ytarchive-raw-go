@@ -210,7 +210,6 @@ func downloadTask(
 
         ok := downloadSegment(task, status, seg)
         if ok {
-            task.logger().Debugf("Downloaded segment %d", seg)
             done(seg)
 
             seg = -1
@@ -309,6 +308,7 @@ func downloadSegment(task *DownloadTask, status *segmentStatus, segment int) boo
         task.logger().Errorf("Unable to rename segment %d: %v", segment, err)
         return false
     }
+    task.logger().Debugf("Downloaded segment %d", segment)
 
     status.downloaded(segment, segmentResult {
         ok: true,

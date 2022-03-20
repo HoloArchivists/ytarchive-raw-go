@@ -33,6 +33,8 @@ func createMergedFile(which string) string {
 }
 
 func main() {
+    parseArgs()
+
     if tempDir == "" {
         var err error
         tempDir, err = ioutil.TempDir("", fmt.Sprintf("ytarchive-%s-", fregData.Metadata.Id))
@@ -46,8 +48,12 @@ func main() {
         }
     }
 
+    var rt http.RoundTripper
+    if useQuic {
+        rt = &http3.RoundTripper {}
+    }
     client := &http.Client {
-        Transport: &http3.RoundTripper{},
+        Transport: rt,
     }
 
     audioTask := &download.DownloadTask {

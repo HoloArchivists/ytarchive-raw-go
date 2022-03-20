@@ -80,6 +80,7 @@ func (f *FregJson) fillFormatVals() {
     vals["upload_date"] = f.Metadata.StartTimestamp.Format("20060102")
     vals["start_date"] = vals["upload_date"]
     vals["publish_date"] = vals["upload_date"]
+    vals["start_timestamp"] = f.Metadata.StartTimestamp.Format(time.RFC3339)
     vals["description"] = f.Metadata.Description
 
     channelUrlRegex := regexp.MustCompile(`^https?://(?:www\.)youtube.com/channel/([a-zA-Z0-9\-_]+)$`)
