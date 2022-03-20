@@ -12,6 +12,13 @@ import (
     "github.com/notpeko/ytarchive-raw-go/log"
 )
 
+type QueueMode int
+const (
+    QueueAuto       QueueMode = iota
+    QueueSequential
+    QueueOutOfOrder
+)
+
 const FailThreshold = 20
 const RetryThreshold = 3
 
@@ -28,6 +35,7 @@ type DownloadTask struct {
     DeleteSegments bool
     Logger         *log.Logger
     MergeFile      string
+    QueueMode      QueueMode
     SegmentDir     string
     Threads        uint
     Url            string
@@ -80,7 +88,7 @@ func (d *DownloadTask) logger() *log.Logger {
 func (d *DownloadTask) run() {
     defer d.wg.Done()
 
-    segmentStatus, err := newSegStatus(d, d.Url)
+    segmentStatus, err := newSegStatus(d, d.Url, d.QueueMode)
     if err != nil {
         d.result.Error = err
         return
@@ -97,11 +105,10 @@ func (d *DownloadTask) run() {
     var downloadGroup sync.WaitGroup
     for i := uint(0); i < d.Threads; i++ {
         downloadGroup.Add(1)
-        go downloadSegmentGroup(
+        go downloadTask(
             i,
             d,
             &downloadGroup,
-            segmentStatus.groups[i],
             segmentStatus,
             pbar.done,
         )
@@ -112,23 +119,29 @@ func (d *DownloadTask) run() {
     d.result.LostSegments = mergeTask.notMerged
 }
 
-func downloadSegmentGroup(
+func downloadTask(
     threadNumber uint,
     task *DownloadTask,
     wg *sync.WaitGroup,
-    segments segmentRange,
     status *segmentStatus,
     done func(int),
 ) {
     defer wg.Done()
+    queue := status.createQueue(int(threadNumber))
 
-    task.logger().Infof("Thread %d downloading segments [%d, %d]", threadNumber, segments.start, segments.end)
-    seg := segments.start
     failCount := 0
+    seg := -1
     for {
-        if seg > segments.end {
-            task.logger().Infof("Thread %d done", threadNumber)
-            break
+        if seg == -1 {
+            var ok bool
+            seg, ok = queue.NextSegment()
+            if !ok {
+                task.logger().Infof("Thread %d done", threadNumber)
+                break
+            }
+            if seg == -1 {
+                panic("Segment == -1")
+            }
         }
 
         if failCount >= FailThreshold {
@@ -137,7 +150,7 @@ func downloadSegmentGroup(
             status.downloaded(seg, segmentResult { ok: false })
             done(seg)
 
-            seg++
+            seg = -1
             failCount = 0
             continue
         }
@@ -149,7 +162,7 @@ func downloadSegmentGroup(
             task.logger().Debugf("Downloaded segment %d", seg)
             done(seg)
 
-            seg++
+            seg = -1
             failCount = 0
         } else {
             failCount++

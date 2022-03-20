@@ -10,16 +10,11 @@ import (
 )
 
 type segmentStatus struct {
-    mu          sync.Mutex
-    end         int
-    groups      []segmentRange
-    mergedCount int
-    segments    map[int]segmentResult
-}
-
-type segmentRange struct {
-    start int
-    end   int
+    mu           sync.Mutex
+    end          int
+    mergedCount  int
+    scheduler    workScheduler
+    segments     map[int]segmentResult
 }
 
 type segmentResult struct {
@@ -38,6 +33,11 @@ func getSegUrl(baseUrl string, seg int) string {
     url.RawQuery = q.Encode()
 
     return url.String()
+}
+
+// each worker has it's own queue of segments to download
+func (s *segmentStatus) createQueue(worker int) workQueue {
+    return s.scheduler.CreateQueue(worker)
 }
 
 // is this segment done downloading?
@@ -70,7 +70,7 @@ func (s *segmentStatus) done() bool {
     return s.mergedCount == s.end
 }
 
-func newSegStatus(task *DownloadTask, url string) (*segmentStatus, error) {
+func newSegStatus(task *DownloadTask, url string, mode QueueMode) (*segmentStatus, error) {
     task.logger().Info("Getting total segments")
 
     url = getSegUrl(url, 0)
@@ -91,31 +91,19 @@ func newSegStatus(task *DownloadTask, url string) (*segmentStatus, error) {
     }
     task.logger().Infof("Total segments: %d", segmentCount)
 
-    ret := &segmentStatus {
-        end:         segmentCount,
-        groups:      make([]segmentRange, 0),
-        mergedCount: 0,
-        segments:    make(map[int]segmentResult),
+    var scheduler workScheduler
+    switch mode {
+    case QueueOutOfOrder:
+        scheduler = makeBatchedScheduler(segmentCount, int(task.Threads))
+    case QueueSequential, QueueAuto:
+        scheduler = makeSequentialScheduler(segmentCount)
     }
 
-    lastSeg := -1
-    interval := ret.end / int(task.Threads)
-    for {
-        if lastSeg + 1 + interval < ret.end {
-            r := segmentRange {
-                start: lastSeg + 1,
-                end:   lastSeg + 1 + interval,
-            }
-            ret.groups = append(ret.groups, r)
-            lastSeg = lastSeg + 1 + interval
-        } else {
-            r := segmentRange {
-                start: lastSeg + 1,
-                end:   ret.end - 1,
-            }
-            ret.groups = append(ret.groups, r)
-            break
-        }
+    ret := &segmentStatus {
+        end:         segmentCount,
+        mergedCount: 0,
+        scheduler:   scheduler,
+        segments:    make(map[int]segmentResult),
     }
 
     return ret, nil

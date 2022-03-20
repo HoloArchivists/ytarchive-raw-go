@@ -9,17 +9,19 @@ import (
     "strings"
     "time"
 
+    "github.com/notpeko/ytarchive-raw-go/download"
     "github.com/notpeko/ytarchive-raw-go/log"
 )
 
 const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s).mkv"
 
 var (
-    output   string
-    threads  uint
-    timeout  time.Duration
-    logLevel string
-    fregData FregJson
+    output    string
+    threads   uint
+    timeout   time.Duration
+    logLevel  string
+    fregData  FregJson
+    queueMode download.QueueMode
 )
 
 func init() {
@@ -38,6 +40,10 @@ func init() {
     flags.DurationVar(&timeout, "T",       20 * time.Second, "Secs for retrying when encounter HTTP errors. Default 20.")
     flags.DurationVar(&timeout, "timeout", 20 * time.Second, "Secs for retrying when encounter HTTP errors. Default 20.")
 
+    var queue string
+    flags.StringVar(&queue, "q",          "auto", "Order to download segments (sequential, out-of-order, auto).")
+    flags.StringVar(&queue, "queue-mode", "auto", "Order to download segments (sequential, out-of-order, auto).")
+
     var verbose bool
     flags.BoolVar(&verbose, "v",       false, "Enable debug logging. Overrides log-level.")
     flags.BoolVar(&verbose, "verbose", false, "Enable debug logging. Overrides log-level.")
@@ -55,6 +61,17 @@ func init() {
         os.Exit(1)
     }
     log.SetDefaultLevel(level)
+
+    switch strings.ToLower(queue) {
+    case "auto":
+        queueMode = download.QueueAuto
+    case "sequential":
+        queueMode = download.QueueSequential
+    case "out-of-order":
+        queueMode = download.QueueOutOfOrder
+    default:
+        log.Fatalf("Invalid queue mode '%s'", queue)
+    }
 
     if input == "" {
         log.Fatalf("No input file specified")

@@ -75,7 +75,9 @@ func (m *mergeTask) doMerge() {
             if err != nil {
                 m.owner.logger().Errorf("Unable to merge file '%s' into '%s': %v", result.filename, m.targetFile, err)
             } else {
-                os.Remove(result.filename)
+                if m.owner.DeleteSegments {
+                    os.Remove(result.filename)
+                }
             }
         } else {
             m.notMerged = append(m.notMerged, currentSeg)
