@@ -143,6 +143,15 @@ func makeBatchedScheduler(segments int, requeueDelay time.Duration, threads int)
             break
         }
     }
+    for len(s.batches) < threads {
+        // start > end so it just steals
+        b := &batchRange {
+            sched: s,
+            start: -1,
+            end:   -2,
+        }
+        s.batches = append(s.batches, b)
+    }
     return s
 }
 
