@@ -6,7 +6,7 @@ import (
     "net/http"
     "net/url"
     "os"
-    "path"
+    "path/filepath"
     "strconv"
     "strings"
     "sync"
@@ -316,7 +316,7 @@ func downloadTask(
 }
 
 func segmentBaseFileName(task *DownloadTask, segment int) string {
-    return path.Join(
+    return filepath.Join(
         task.SegmentDir,
         fmt.Sprintf(
             "segment-%s_%d.%d",

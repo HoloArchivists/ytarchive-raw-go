@@ -4,7 +4,7 @@ import (
     "fmt"
     "io/ioutil"
     "os"
-    "path"
+    "path/filepath"
 
     "github.com/mattn/go-colorable"
 
@@ -51,7 +51,7 @@ func main() {
         }
     }
 
-    defer util.LockFile(path.Join(tempDir, fregData.Metadata.Id + ".lock"), func() {
+    defer util.LockFile(filepath.Join(tempDir, fregData.Metadata.Id + ".lock"), func() {
         log.Error("This video is already being downloaded by another instance.")
         log.Error("Running two instances on the same video with the same temporary directory is not supported.")
     })()
@@ -98,6 +98,12 @@ func main() {
     muxer, err := merge.CreateBestMuxer(muxerOpts)
     if err != nil {
         log.Fatalf("Unable to create muxer: %v", err)
+    }
+
+    dir := filepath.Dir(muxer.OutputFilePath())
+    err = os.MkdirAll(dir, 0755)
+    if err != nil {
+        log.Fatalf("Unable to create parent directories for output file: %v", err)
     }
 
     defer util.LockFile(muxer.OutputFilePath() + ".lock", func() {

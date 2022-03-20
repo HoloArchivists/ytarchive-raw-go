@@ -6,7 +6,7 @@ import (
     "fmt"
     "os"
     "os/exec"
-    "path"
+    "path/filepath"
     "strings"
 
     "github.com/notpeko/ytarchive-raw-go/log"
@@ -81,7 +81,7 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     cmd := ffmpeg(options.Logger, args...)
     cmd.Env = append(
         os.Environ(),
-        fmt.Sprintf("FFREPORT=file='%s':level=32", path.Join(options.TempDir, fmt.Sprintf("ffmpeg-%s.out", options.FregData.Metadata.Id))),
+        fmt.Sprintf("FFREPORT=file='%s':level=32", filepath.Join(options.TempDir, fmt.Sprintf("ffmpeg-%s.out", options.FregData.Metadata.Id))),
     )
     cmd.Stdin = nil
 

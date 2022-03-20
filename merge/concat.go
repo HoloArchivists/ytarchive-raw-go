@@ -4,7 +4,7 @@ import (
     "fmt"
     "io"
     "os"
-    "path"
+    "path/filepath"
     "sync"
     "time"
 
@@ -94,7 +94,7 @@ type concatTask struct {
 }
 
 func createConcatTask(options *MuxerOptions, progress *mergeProgress, which string) (*concatTask, error) {
-    file := path.Join(options.TempDir, fmt.Sprintf("merged-%s.%s", options.FregData.Metadata.Id, which))
+    file := filepath.Join(options.TempDir, fmt.Sprintf("merged-%s.%s", options.FregData.Metadata.Id, which))
     if util.FileNotEmpty(file) {
         if !options.OverwriteTemp {
             return nil, fmt.Errorf("Temporary merge file %s already exists and overwriting is disabled", file)
