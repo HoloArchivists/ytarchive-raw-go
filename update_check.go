@@ -2,16 +2,33 @@ package main
 
 import (
     "encoding/json"
+    "fmt"
     "io/ioutil"
     "net/http"
+    "runtime"
     "strconv"
     "strings"
 
     "github.com/notpeko/ytarchive-raw-go/log"
 )
 
+type githubReleaseAsset struct {
+    DownloadUrl string `json:"browser_download_url"`
+}
+
 type githubReleaseData struct {
-    TagName string `json:"tag_name"`
+    TagName string               `json:"tag_name"`
+    Assets  []githubReleaseAsset `json:"assets"`
+}
+
+func (d *githubReleaseData) updateUrl() (string, bool) {
+    target := runtime.GOOS + "-" + runtime.GOARCH
+    for _, v := range d.Assets {
+        if strings.Contains(v.DownloadUrl, target) {
+            return v.DownloadUrl, true
+        }
+    }
+    return "", false
 }
 
 func parseVersion(version string) ([3]int, bool) {
@@ -59,6 +76,9 @@ func versionCheck() (string, bool) {
 
     for i, v := range version {
         if latestVersion[i] > v {
+            if url, ok := result.updateUrl(); ok {
+                return fmt.Sprintf("%s (%s)", result.TagName, url), true
+            }
             return result.TagName, true
         }
         if latestVersion[i] < v {
