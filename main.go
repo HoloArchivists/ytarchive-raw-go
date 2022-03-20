@@ -3,11 +3,9 @@ package main
 import (
     "fmt"
     "io/ioutil"
-    "net/http"
     "os"
     "path"
 
-    "github.com/lucas-clemente/quic-go/http3"
     "github.com/mattn/go-colorable"
 
     "github.com/notpeko/ytarchive-raw-go/download"
@@ -77,15 +75,10 @@ func main() {
         return
     }
 
-    createClient := func() *http.Client {
-        var rt http.RoundTripper
-        if useQuic {
-            rt = &http3.RoundTripper {}
-        }
-        return &http.Client {
-            Transport: rt,
-        }
-    }
+    client := util.NewClient(&util.HttpClientConfig {
+        Network: network,
+        UseQuic: useQuic,
+    })
 
     muxer, err := merge.CreateBestMuxer(muxerOpts)
     if err != nil {
@@ -99,7 +92,7 @@ func main() {
     progress := download.NewProgress(windowName)
 
     audioTask := &download.DownloadTask {
-        CreateClient:   createClient,
+        Client:         client,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
         Logger:         log.New("audio.0"),
@@ -116,7 +109,7 @@ func main() {
         Url:            fregData.BestAudio(),
     }
     videoTask := &download.DownloadTask {
-        CreateClient:   createClient,
+        Client:         client,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
         Logger:         log.New("video.0"),

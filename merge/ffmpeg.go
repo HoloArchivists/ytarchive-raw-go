@@ -23,7 +23,7 @@ func ffmpeg(logger *log.Logger, args ...string) *exec.Cmd {
 }
 
 func testFfmpeg() error {
-    cmd := ffmpeg(nil, "-h")
+    cmd := ffmpeg(log.DefaultLogger, "-h")
     cmd.Stdin = nil
     cmd.Stdout = nil
     cmd.Stderr = nil
@@ -31,7 +31,7 @@ func testFfmpeg() error {
 }
 
 func hasProtocol(name string) bool {
-    cmd := ffmpeg(nil, "--help", "protocol=" + name)
+    cmd := ffmpeg(log.DefaultLogger, "--help", "protocol=" + name)
     cmd.Stdin = nil
     output, err := cmd.Output()
     if err != nil {

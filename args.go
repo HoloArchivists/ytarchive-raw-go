@@ -30,6 +30,8 @@ var (
     disableResume  bool
     flagSet        *flag.FlagSet
     failThreshold  uint
+    forceIPv4      bool
+    forceIPv6      bool
     fregData       util.FregJson
     fsync          bool
     input          string
@@ -38,6 +40,7 @@ var (
     mergeOnlyFile  string
     merger         string
     mergerArgs     = make(map[string]map[string]string)
+    network        = util.NetworkAny
     output         string
     overwriteTemp  bool
     queue          string
@@ -68,6 +71,12 @@ Usage: %[1]s [OPTIONS]
 Options:
         -h, --help
                 Show this help message.
+
+        -4, --ipv4
+            Force use of IPv4.
+
+        -6, --ipv6
+            Force use of IPv6.
 
         --connect-retries AMOUNT
                 Amount of times to retry on connection failure.
@@ -260,6 +269,12 @@ func init() {
     flagSet = flag.NewFlagSet("flags", flag.ExitOnError)
     flagSet.Usage = printUsage
 
+    flagSet.BoolVar(&forceIPv4, "4", false, "Force use of IPv4.")
+    flagSet.BoolVar(&forceIPv4, "ipv4", false, "Force use of IPv4.")
+
+    flagSet.BoolVar(&forceIPv6, "6", false, "Force use of IPv6.")
+    flagSet.BoolVar(&forceIPv6, "ipv6", false, "Force use of IPv6.")
+
     flagSet.UintVar(&retryThreshold, "connect-retries", download.DefaultRetryThreshold, "Amount of times to retry a request on connection failure.")
 
     flagSet.BoolVar(&disableResume, "disable-resume", false, "Disable resume support.")
@@ -363,6 +378,14 @@ func parseArgs() {
         queueMode = segments.QueueOutOfOrder
     default:
         log.Fatalf("Invalid queue mode '%s'", queue)
+    }
+
+    if forceIPv4 && forceIPv6 {
+        log.Fatalf("--ipv4 and --ipv6 options cannot be combined")
+    } else if forceIPv4 {
+        network = util.NetworkIPv4
+    } else if forceIPv6 {
+        network = util.NetworkIPv6
     }
 
     if input == "" && mergeOnlyFile == "" {

@@ -29,7 +29,7 @@ type DownloadResult struct {
 }
 
 type DownloadTask struct {
-    CreateClient   func() *http.Client
+    Client         *util.HttpClient
     FailThreshold  uint
     Fsync          bool
     Logger         *log.Logger
@@ -44,8 +44,6 @@ type DownloadTask struct {
     SegmentDir     string
     Threads        uint
     Url            string
-    clientLock     sync.Mutex
-    httpClient     *http.Client
     wg             sync.WaitGroup
     result         DownloadResult
     started        bool
@@ -132,27 +130,6 @@ func (d *DownloadTask) Wait() *DownloadResult {
     return &d.result
 }
 
-func (d *DownloadTask) client() *http.Client {
-    d.clientLock.Lock()
-    defer d.clientLock.Unlock()
-
-    if d.httpClient == nil {
-        d.httpClient = d.CreateClient()
-    }
-    return d.httpClient
-}
-
-func (d *DownloadTask) replaceClient() {
-    d.clientLock.Lock()
-    defer d.clientLock.Unlock()
-
-    if c, ok := d.httpClient.Transport.(io.Closer); ok {
-        c.Close()
-    }
-    //next client() call will create a new one
-    d.httpClient = nil
-}
-
 func (d *DownloadTask) logger() *log.Logger {
     if d.Logger != nil {
         return d.Logger
@@ -164,7 +141,7 @@ func (d *DownloadTask) getSegmentCount() (int, error) {
     d.logger().Info("Getting total segments")
 
     url := getSegUrl(d.Url, 0)
-    resp, err := d.client().Get(url)
+    resp, err := d.Client.Get(url)
     if err != nil {
         return -1, err
     }
@@ -276,7 +253,7 @@ func downloadTask(
             //retry again instantly, it'll grab a new client and go from there
             if networkFailCount > failCount / 2 {
                 task.logger().Warnf("Suspicious network failures for segment %d, replacing http client", seg)
-                task.replaceClient()
+                task.Client.ReplaceClient()
 
                 failCount -= networkFailCount
                 continue
@@ -423,7 +400,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
 func doRequest(task *DownloadTask, req *http.Request) (*http.Response, error) {
     var errors []error
     for i := uint(0); i < task.RetryThreshold; i++ {
-        resp, err := task.client().Do(req)
+        resp, err := task.Client.Do(req)
         if err == nil {
             return resp, nil
         }
