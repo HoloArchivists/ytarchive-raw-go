@@ -66,6 +66,8 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
         "-metadata",
         "author=" + options.FregData.Metadata.ChannelName,
         "-metadata",
+        "artist=" + options.FregData.Metadata.ChannelName,
+        "-metadata",
         "episode_id=" + options.FregData.Metadata.Id,
         "-attach",
         thumbnail,
