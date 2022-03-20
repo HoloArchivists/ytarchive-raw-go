@@ -43,6 +43,7 @@ func main() {
             log.Fatalf("Unable to create temp dir at '%s': %v", tempDir, err)
         }
     }
+
     lock := flock.New(path.Join(tempDir, fregData.Metadata.Id + ".lock"))
     locked, err := lock.TryLock()
     if err != nil {
@@ -55,6 +56,26 @@ func main() {
     }
     defer lock.Unlock()
 
+    muxerOpts := &merge.MuxerOptions {
+        DeleteSegments:  !keepFiles,
+        FinalFileBase:   output,
+        FregData:        &fregData,
+        Logger:          log.New("muxer.0"),
+        Merger:          merger,
+        MergerArguments: mergerArgs,
+        OverwriteTemp:   overwriteTemp,
+        TempDir:         tempDir,
+    }
+
+    if mergeOnlyFile != "" {
+        log.Infof("Merging video from %s", mergeOnlyFile)
+        if err := merge.MergeDownloadInfoJson(muxerOpts, mergeOnlyFile); err != nil {
+            log.Fatalf("Failed to merge: %v", err)
+        }
+        log.Info("Success!")
+        return
+    }
+
     var rt http.RoundTripper
     if useQuic {
         rt = &http3.RoundTripper {}
@@ -63,16 +84,7 @@ func main() {
         Transport: rt,
     }
 
-    muxer, err := merge.CreateBestMuxer(&merge.MuxerOptions {
-        DeleteSegments:  !keepFiles,
-        FinalFile:       output,
-        FregData:        &fregData,
-        Logger:          log.New("muxer.0"),
-        Merger:          merger,
-        MergerArguments: mergerArgs,
-        OverwriteTemp:   overwriteTemp,
-        TempDir:         tempDir,
-    })
+    muxer, err := merge.CreateBestMuxer(muxerOpts)
     if err != nil {
         log.Fatalf("Unable to create muxer: %v", err)
     }

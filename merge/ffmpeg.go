@@ -104,7 +104,7 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
         "-metadata:s:t",
         "filename=thumbnail.jpg",
     )
-    args = append(args, options.FinalFile)
+    args = append(args, options.FinalFileBase + ".mkv")
 
     cmd := ffmpeg(options.Logger, args...)
     cmd.Env = append(

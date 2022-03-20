@@ -25,6 +25,8 @@ func CreateBestMuxer(opts *MuxerOptions) (Muxer, error) {
     }
 
     switch strings.ToLower(opts.Merger) {
+    case "download-only":
+        return CreateDownloadOnlyMuxer(opts)
     case "tcp":
         return CreateTcpMuxer(opts)
     case "concat":
@@ -35,9 +37,11 @@ func CreateBestMuxer(opts *MuxerOptions) (Muxer, error) {
         return nil, fmt.Errorf("Unknown merger '%s'", opts.Merger)
     }
 
-    if hasProtocol("concatf") {
+    //probably not worth implementing, tcp is objectively better,
+    //download-only can be used as an alternative if tcp is missing.
+//    if hasProtocol("concatf") {
 //        opts.Logger.Info("Using concatf protocol")
-    }
+//    }
     if hasProtocol("tcp") {
         opts.Logger.Info("Using tcp protocol")
         return CreateTcpMuxer(opts)
@@ -53,7 +57,7 @@ type MuxerOptions struct {
     // should segments be deleted after merging?
     DeleteSegments  bool
     // where to save the muxed file
-    FinalFile       string
+    FinalFileBase   string
     // video metadata
     FregData        *util.FregJson
     Logger          *log.Logger
