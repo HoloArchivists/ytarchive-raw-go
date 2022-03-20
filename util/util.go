@@ -42,7 +42,7 @@ var videoFormatNames = map[int]string {
     303: "1080p60 VP9",
     299: "1080p60 H264",
     248: "1080p VP9",
-    169: "1080p VP9", // duplicate?
+    169: "1080p VP8",
     137: "1080p H264",
     334: "720p60 VP9 HDR",
     302: "720p60 VP9",
