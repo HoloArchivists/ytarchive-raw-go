@@ -27,6 +27,7 @@ func printResult(logger *log.Logger, res *download.DownloadResult) {
 
 func main() {
     colorable.EnableColorsStdout(nil)
+    disableQuickEditMode()
     parseArgs()
     increaseOpenFileLimit()
 
