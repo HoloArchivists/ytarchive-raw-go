@@ -144,6 +144,16 @@ func downloadTask(
             }
         }
 
+        //the last segment often isn't available, so use less retries for it
+        fails := FailThreshold
+        if seg == status.end - 1 {
+            //at least 5
+            fails = FailThreshold / 4
+            if fails < 5 {
+                fails = 5
+            }
+        }
+
         if failCount >= FailThreshold {
             task.logger().Warnf("Giving up segment %d", seg)
 
@@ -167,7 +177,14 @@ func downloadTask(
         } else {
             failCount++
             task.logger().Debugf("Failed segment %d [%d/%d]", seg, failCount, FailThreshold)
-            time.Sleep(1 * time.Second)
+
+            //exponential backoff, up to 4 seconds between retries
+            sleepShift := failCount
+            if sleepShift > 2 {
+                sleepShift = 2
+            }
+
+            time.Sleep(time.Duration(1 << sleepShift) * time.Second)
         }
     }
 }
