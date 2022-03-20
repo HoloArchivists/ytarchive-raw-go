@@ -115,8 +115,8 @@ func (d *DownloadTask) Start() {
             d.logger().Warnf("Unable to parse 'expire' parameter: %v", err)
         } else {
             t := time.Unix(expire, 0)
-            if now := time.Now(); t.After(now) {
-                d.Logger.Warnf("URL expired %v ago, download will most likely fail", t.Sub(now).Round(time.Second))
+            if now := time.Now(); now.After(t) {
+                d.Logger.Warnf("URL expired %v ago, download will most likely fail", now.Sub(t).Round(time.Second))
             }
             d.expire = &t
         }
