@@ -7,6 +7,7 @@ import (
     "io/ioutil"
     "os"
     "path/filepath"
+    "strconv"
     "strings"
     "time"
 
@@ -46,6 +47,8 @@ var (
     onlyVideo      bool
     output         string
     overwriteTemp  bool
+    preferredAudio []int
+    preferredVideo []int
     queue          string
     queueMode      segments.QueueMode
     requeueDelay   time.Duration
@@ -160,6 +163,18 @@ Options:
                 empty. If enabled, temporary files are deleted and recreated.
 
                 This does not affect raw segment files, only merging files.
+
+        --preferred-audio FORMATS
+                Comma separated list of audio itag values. The first value found
+                on the available URLs will be downloaded. If none of the formats
+                are available, the program will error instead of picking the best
+                quality.
+
+        --preferred-video FORMATS
+                Comma separated list of video itag values. The first value found
+                on the available URLs will be downloaded. If none of the formats
+                are available, the program will error instead of picking the best
+                quality.
 
         -q, --queue-mode MODE
                 Order to download segments (sequential, out-of-order).
@@ -282,6 +297,20 @@ FORMAT TEMPLATE OPTIONS
 `, self, DefaultOutputFormat)
 }
 
+func parseItagList(s string) ([]int, error) {
+    l := strings.Split(s, ",")
+    res := make([]int, len(l))
+
+    for i, v := range l {
+        itag, err := strconv.Atoi(strings.TrimSpace(v))
+        if err != nil {
+            return nil, fmt.Errorf("Invalid itag code '%s': %v", v, err)
+        }
+        res[i] = itag
+    }
+    return res, nil
+}
+
 func init() {
     flagSet = flag.NewFlagSet("flags", flag.ExitOnError)
     flagSet.Usage = printUsage
@@ -335,6 +364,24 @@ func init() {
 
     flagSet.BoolVar(&overwriteTemp, "O",              false, "Overwrite temporary merged files.")
     flagSet.BoolVar(&overwriteTemp, "overwrite-temp", false, "Overwrite temporary merged files.")
+
+    flagSet.Func("preferred-audio", "Comma separated list of preferred audio itag codes", func(s string) error {
+        l, err := parseItagList(s)
+        if err != nil {
+            return err
+        }
+        preferredAudio = l
+        return nil
+    })
+
+    flagSet.Func("preferred-video", "Comma separated list of preferred video itag codes", func(s string) error {
+        l, err := parseItagList(s)
+        if err != nil {
+            return err
+        }
+        preferredVideo = l
+        return nil
+    })
 
     flagSet.StringVar(&queue, "q",          "out-of-order", "Order to download segments (sequential, out-of-order).")
     flagSet.StringVar(&queue, "queue-mode", "out-of-order", "Order to download segments (sequential, out-of-order).")

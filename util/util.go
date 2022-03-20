@@ -86,7 +86,7 @@ type FregJson struct {
     formatLock sync.Mutex
 }
 
-func pickBestID(urls map[int]string, order []int) int {
+func pickBestID(urls map[int]string, order []int, guess bool) int {
     for _, v := range order {
         _, ok := urls[v]
         if ok {
@@ -94,21 +94,32 @@ func pickBestID(urls map[int]string, order []int) int {
         }
     }
     //no format is known, pick whatever is highest to maybe get the best quality
-    var max int = -100000
-    for k, _ := range urls {
-        if k > max {
-            max = k
+    if guess {
+        log.Warnf("Unable to find best format, choosing highest itag value as a guess for best codec")
+        var max int = -100000
+        for k, _ := range urls {
+            if k > max {
+                max = k
+            }
         }
+        if _, ok := urls[max]; ok {
+            return max
+        }
+        log.Fatalf("Unable to find a suitable codec (tried %v, picking highest)", order)
+    } else {
+        log.Fatalf("Unable to find a suitable codec (tried %v)", order)
     }
-    _, ok := urls[max]
-    if !ok {
-        panic("No URLs found")
-    }
-    return max
+    return -1
 }
 
-func pickBest(urls map[int]string, order []int, names map[int]string, which string) string {
-    id := pickBestID(urls, order)
+func pickBest(urls map[int]string, preferredFormats []int, order []int, names map[int]string, which string) string {
+    guess := true
+    if preferredFormats != nil {
+        order = preferredFormats
+        guess = false
+    }
+
+    id := pickBestID(urls, order, guess)
     name, ok := names[id]
     if !ok {
         name = "unknown codec"
@@ -117,12 +128,12 @@ func pickBest(urls map[int]string, order []int, names map[int]string, which stri
     return urls[id]
 }
 
-func (f *FregJson) BestVideo() string {
-    return pickBest(f.Video, bestVideoFormats, videoFormatNames, "video")
+func (f *FregJson) BestVideo(preferredFormats []int) string {
+    return pickBest(f.Video, preferredFormats, bestVideoFormats, videoFormatNames, "video")
 }
 
-func (f *FregJson) BestAudio() string {
-    return pickBest(f.Audio, bestAudioFormats, audioFormatNames, "audio")
+func (f *FregJson) BestAudio(preferredFormats []int) string {
+    return pickBest(f.Audio, preferredFormats, bestAudioFormats, audioFormatNames, "audio")
 }
 
 func (f *FregJson) fillFormatVals() {

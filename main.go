@@ -120,7 +120,7 @@ func main() {
         Client:         client,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
-        Logger:         log.New("dl.audio"),
+        Logger:         log.New("download.audio"),
         Merger:         muxer.AudioMerger(),
         Progress:       progress.Audio(),
         QueueMode:      queueMode,
@@ -131,13 +131,13 @@ func main() {
         SegmentCount:   segmentCount,
         SegmentDir:     tempDir,
         Threads:        threads,
-        Url:            fregData.BestAudio(),
+        Url:            fregData.BestAudio(preferredAudio),
     }
     videoTask := &download.DownloadTask {
         Client:         client,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
-        Logger:         log.New("dl.video"),
+        Logger:         log.New("download.video"),
         Merger:         muxer.VideoMerger(),
         Progress:       progress.Video(),
         QueueMode:      queueMode,
@@ -148,7 +148,7 @@ func main() {
         SegmentCount:   segmentCount,
         SegmentDir:     tempDir,
         Threads:        threads,
-        Url:            fregData.BestVideo(),
+        Url:            fregData.BestVideo(preferredVideo),
     }
 
     if onlyAudio {
