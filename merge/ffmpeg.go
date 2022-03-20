@@ -123,6 +123,10 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     }
     printOutput(options.Logger, &stderr, true)
 
+    if options.DeleteSegments {
+        os.Remove(thumbnail)
+    }
+
     return nil
 }
 

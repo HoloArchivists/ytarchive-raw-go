@@ -27,6 +27,7 @@ var Commit string
 const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s)"
 
 var (
+    disableResume  bool
     flagSet        *flag.FlagSet
     failThreshold  uint
     fregData       util.FregJson
@@ -71,6 +72,13 @@ Options:
         --connect-retries AMOUNT
                 Amount of times to retry on connection failure.
                 Default is 3
+
+        --disable-resume
+                Disables resume support. Fragment files will be deleted as
+                soon as they have been merged, instead of being deleted only
+                after the download is done.
+                If both this option and 'keep-files' are passed, segments won't
+                be deleted at all.
 
         --fsync
                 If enabled, fsync is called after writing data to segment files.
@@ -253,6 +261,8 @@ func init() {
     flagSet.Usage = printUsage
 
     flagSet.UintVar(&retryThreshold, "connect-retries", download.DefaultRetryThreshold, "Amount of times to retry a request on connection failure.")
+
+    flagSet.BoolVar(&disableResume, "disable-resume", false, "Disable resume support.")
 
     flagSet.BoolVar(&fsync, "fsync", false, "Force flushing of OS buffers after writing segment files.")
 

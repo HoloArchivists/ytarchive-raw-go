@@ -51,6 +51,7 @@ func main() {
 
     muxerOpts := &merge.MuxerOptions {
         DeleteSegments:  !keepFiles,
+        DisableResume:   disableResume,
         FinalFileBase:   output,
         FregData:        &fregData,
         Logger:          log.New("muxer.0"),

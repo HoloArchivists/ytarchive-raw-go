@@ -63,6 +63,11 @@ func (m *ConcatMuxer) Mux() error {
         m.opts.Logger.Warnf("Failed to remove merged video: %v", err)
     }
 
+    if m.opts.DeleteSegments {
+        deleteSegmentFiles(m.audioMerger.segments)
+        deleteSegmentFiles(m.videoMerger.segments)
+    }
+
     return nil
 }
 
@@ -75,6 +80,7 @@ type concatTask struct {
     deleteSegments bool
     logger         *log.Logger
     wg             sync.WaitGroup
+    segments       []string
     targetFile     string
 }
 
@@ -90,7 +96,7 @@ func createConcatTask(options *MuxerOptions, which string) (*concatTask, error) 
     }
 
     task := &concatTask {
-        deleteSegments: options.DeleteSegments,
+        deleteSegments: options.DisableResume,
         logger:         options.Logger.SubLogger(which),
         targetFile:     file,
     }
@@ -143,6 +149,8 @@ func (t *concatTask) Merge(status *segments.SegmentStatus) {
             } else {
                 if t.deleteSegments {
                     os.Remove(result.Filename)
+                } else {
+                    t.segments = append(t.segments, result.Filename)
                 }
             }
         }

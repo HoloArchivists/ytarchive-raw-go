@@ -2,6 +2,7 @@ package merge
 
 import (
     "fmt"
+    "os"
     "strings"
 
     "github.com/notpeko/ytarchive-raw-go/download/segments"
@@ -55,8 +56,10 @@ func CreateBestMuxer(opts *MuxerOptions) (Muxer, error) {
 }
 
 type MuxerOptions struct {
-    // should segments be deleted after merging?
+    // should segments be deleted after successfully muxing?
     DeleteSegments  bool
+    // should segments be deleted after merging?
+    DisableResume   bool
     // where to save the muxed file
     FinalFileBase   string
     // video metadata
@@ -79,5 +82,13 @@ func (opts *MuxerOptions) getMergerArgument(name, arg string) (string, bool) {
     }
     v, ok := m[strings.ToLower(arg)]
     return v, ok
+}
+
+func deleteSegmentFiles(paths []string) {
+    for _, v := range paths {
+        if err := os.Remove(v); err != nil {
+            log.Warnf("Failed to remove segment file %s: %v", v, err)
+        }
+    }
 }
 

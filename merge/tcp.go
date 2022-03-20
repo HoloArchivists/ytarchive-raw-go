@@ -64,6 +64,11 @@ func (m *TcpMuxer) Mux() error {
     m.audioMerger.listener.Close()
     m.videoMerger.listener.Close()
 
+    if m.opts.DeleteSegments {
+        deleteSegmentFiles(m.audioMerger.segments)
+        deleteSegmentFiles(m.videoMerger.segments)
+    }
+
     return nil
 }
 
@@ -76,6 +81,7 @@ type tcpTask struct {
     deleteSegments bool
     listener       net.Listener
     logger         *log.Logger
+    segments       []string
     wg             sync.WaitGroup
 }
 
@@ -86,7 +92,7 @@ func createTcpTask(bindAddress string, options *MuxerOptions, which string) (*tc
     }
 
     task := &tcpTask {
-        deleteSegments: options.DeleteSegments,
+        deleteSegments: options.DisableResume,
         listener:       l,
         logger:         options.Logger.SubLogger(which),
     }
@@ -145,6 +151,8 @@ func (t *tcpTask) Merge(status *segments.SegmentStatus) {
             } else {
                 if t.deleteSegments {
                     os.Remove(result.Filename)
+                } else {
+                    t.segments = append(t.segments, result.Filename)
                 }
             }
         }

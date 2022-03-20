@@ -34,6 +34,10 @@ func feedMerger(merger Merger, data []segments.SegmentResult) {
 }
 
 func MergeDownloadInfoJson(options *MuxerOptions, path string) error {
+    if options.Merger == "download-only" {
+        return fmt.Errorf("download-only is not a valid merger for --merge")
+    }
+
     data, err := ioutil.ReadFile(path)
     if err != nil {
         return err
@@ -66,6 +70,7 @@ func MergeDownloadInfoJson(options *MuxerOptions, path string) error {
     go feedMerger(mux.AudioMerger(), info.AudioSegments)
     go feedMerger(mux.VideoMerger(), info.VideoSegments)
 
+    // no need to handle deleting segments here, the called merger will deal with that
     return mux.Mux()
 }
 
