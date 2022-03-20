@@ -17,10 +17,12 @@ const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s).mkv"
 var (
     failThreshold  uint
     fregData       FregJson
+    keepFiles      bool
     logLevel       string
     output         string
     queueMode      download.QueueMode
     retryThreshold uint
+    tempDir        string
     threads        uint
 )
 
@@ -42,6 +44,12 @@ func init() {
 
     flags.UintVar(&failThreshold, "r",       download.DefaultFailThreshold, "Amount of times to retry downloading segments on failure.")
     flags.UintVar(&failThreshold, "retries", download.DefaultFailThreshold, "Amount of times to retry downloading segments on failure.")
+
+    flags.BoolVar(&keepFiles, "k",          false, "Do not delete temporary files.")
+    flags.BoolVar(&keepFiles, "keep-files", false, "Do not delete temporary files.")
+
+    flags.StringVar(&tempDir, "d",        "", "Directory to store temporary files. A randomly-named one will be created if empty.")
+    flags.StringVar(&tempDir, "temp-dir", "", "Directory to store temporary files. A randomly-named one will be created if empty.")
 
     var queue string
     flags.StringVar(&queue, "q",          "auto", "Order to download segments (sequential, out-of-order, auto).")

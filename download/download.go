@@ -3,9 +3,12 @@ package download
 import (
     "fmt"
     "io"
-    "io/ioutil"
     "net/http"
+    "net/url"
     "os"
+    "path"
+    "strconv"
+    "strings"
     "sync"
     "time"
 
@@ -44,6 +47,8 @@ type DownloadTask struct {
     wg             sync.WaitGroup
     result         DownloadResult
     started        bool
+    id             string
+    itag           int
 }
 
 func (d *DownloadTask) Start() {
@@ -70,6 +75,32 @@ func (d *DownloadTask) Start() {
     if len(d.SegmentDir) == 0 {
         log.Fatal("Empty SegmentDir")
     }
+
+    targetUrl, err := url.Parse(d.Url)
+    if err != nil {
+        d.logger().Fatalf("Failed to parse URL: %v", err)
+    }
+
+    query := targetUrl.Query()
+
+    if !query.Has("id") {
+        d.logger().Fatal("URL missing 'id' parameter")
+    }
+    id := query.Get("id")
+    if idx := strings.IndexByte(id, '~'); idx > 0 {
+        id = id[:idx]
+    }
+    d.id = id
+
+    if !query.Has("itag") {
+        d.logger().Fatal("URL misssing 'itag' parameter")
+    }
+    itagString := query.Get("itag")
+    itag, err := strconv.Atoi(itagString)
+    if err != nil {
+        d.logger().Fatalf("Unable to parse itag value '%s' into an int", itagString)
+    }
+    d.itag = itag
 
     d.wg.Add(1)
     d.started = true
@@ -199,7 +230,33 @@ func downloadTask(
     }
 }
 
+func segmentBaseFileName(task *DownloadTask, segment int) string {
+    return path.Join(
+        task.SegmentDir,
+        fmt.Sprintf(
+            "segment-%s_%d.%d",
+            task.id,
+            task.itag,
+            segment,
+        ),
+    )
+}
+
 func downloadSegment(task *DownloadTask, status *segmentStatus, segment int) bool {
+    segmentBasePath := segmentBaseFileName(task, segment)
+    segmentDownloadPath := segmentBasePath + ".incomplete"
+    segmentDonePath := segmentBasePath + ".done"
+
+    //already downloaded
+    if info, err := os.Stat(segmentDonePath); err == nil && info.Size() > 0 {
+        task.logger().Debugf("Segment %d already downloaded", segment)
+        status.downloaded(segment, segmentResult {
+            ok: true,
+            filename: segmentDonePath,
+        })
+        return true
+    }
+
     targetUrl := getSegUrl(task.Url, segment)
 
     req, err := http.NewRequest("GET", targetUrl, nil)
@@ -227,25 +284,35 @@ func downloadSegment(task *DownloadTask, status *segmentStatus, segment int) boo
         return false
     }
 
-    file, err := ioutil.TempFile(task.SegmentDir, "segment-")
+    file, err := os.OpenFile(segmentDownloadPath, os.O_RDWR|os.O_CREATE, 0644)
     if err != nil {
         task.logger().Warnf("Unable to create temp file for segment %d: %v", segment, err)
         return false
     }
     defer file.Close()
 
-    _, err = io.Copy(file, resp.Body)
-    if err != nil {
+    if _, err = io.Copy(file, resp.Body); err != nil {
         os.Remove(file.Name())
         task.logger().Errorf("Unable to write segment %d: %v", segment, err)
         return false
     }
 
-    file.Close() //ensure writes are done to not race the merge task
+    if err = file.Sync(); err != nil {
+        os.Remove(file.Name())
+        task.logger().Errorf("Unable to sync segment %d: %v", segment, err)
+        return false
+    }
+    file.Close()
+
+    if err = os.Rename(segmentDownloadPath, segmentDonePath); err != nil {
+        os.Remove(segmentDownloadPath)
+        task.logger().Errorf("Unable to rename segment %d: %v", segment, err)
+        return false
+    }
 
     status.downloaded(segment, segmentResult {
         ok: true,
-        filename: file.Name(),
+        filename: segmentDonePath,
     })
 
     return true
