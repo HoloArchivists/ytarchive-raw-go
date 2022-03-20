@@ -153,6 +153,7 @@ func main() {
     printResult(videoTask.Logger, videoRes)
 
     log.Info("Waiting for muxing to finish")
+    log.Info("This can take a while for long videos, do NOT restart or all muxing progress will be lost")
     res := <-muxerResult
 
     //print again once it's done so it doesn't get buried in newer logs

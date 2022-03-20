@@ -224,8 +224,10 @@ func (r *HttpRequester) Dispose() {
     r.mu.Lock()
     defer r.mu.Unlock()
 
-    r.client.startClose()
-    r.client = nil
+    if r.client != nil {
+        r.client.startClose()
+        r.client = nil
+    }
 }
 
 func (r *HttpRequester) Do(req *http.Request) (*http.Response, error) {
