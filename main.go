@@ -28,6 +28,7 @@ func printResult(logger *log.Logger, res *download.DownloadResult) {
 func main() {
     colorable.EnableColorsStdout(nil)
     parseArgs()
+    increaseOpenFileLimit()
 
     latestVersion, printNewVersion := versionCheck()
     if printNewVersion {
