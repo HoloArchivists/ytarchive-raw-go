@@ -11,6 +11,7 @@ import (
     "net/http"
     "strings"
     "sync"
+    "time"
 
     "github.com/lucas-clemente/quic-go"
     "github.com/lucas-clemente/quic-go/http3"
@@ -26,6 +27,16 @@ const (
 )
 
 var closeRequested = fmt.Errorf("Client close requested")
+
+func netaddr2net(ip netaddr.IP) net.IP {
+    if ip.Is6() {
+        ip6 := ip.As16()
+        return append([]byte(nil), ip6[:]...)
+    } else {
+        ip4 := ip.As4()
+        return append([]byte(nil), ip4[:]...)
+    }
+}
 
 type IPPool struct {
     Addresses []netaddr.IP
@@ -123,16 +134,12 @@ func (c *HttpClient) getSocket(ip netaddr.IP) (quic.OOBCapablePacketConn, error)
     }
 
     var network string
-    var addr net.IP
     if ip.Is6() {
         network = "udp6"
-        ip6 := ip.As16()
-        addr = append([]byte(nil), ip6[:]...)
     } else {
         network = "udp4"
-        ip4 := ip.As4()
-        addr = append([]byte(nil), ip4[:]...)
     }
+    addr := netaddr2net(ip)
 
     udpConn, err := net.ListenUDP(network, &net.UDPAddr{IP: addr, Port: 0})
     if err != nil {
@@ -185,33 +192,46 @@ func (c *HttpClient) getClient(ip *netaddr.IP) *internalClient {
         return client
     }
 
-    client = c.createClient(func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
-        if ip.Is6() {
-            network = "udp6"
-        } else {
-            network = "udp4"
-        }
-
-        remoteAddr, err := net.ResolveUDPAddr(network, addr)
-        if err != nil {
-            return nil, err
-        }
-        udpConn, err := c.getSocket(*ip)
-        if err != nil {
-            return nil, err
-        }
-        return quic.DialEarly(udpConn, remoteAddr, addr, tlsCfg, cfg)
-    })
+    client = c.createClient(ip)
     c.clients[*ip] = client
     return client
 }
 
-func (c *HttpClient) createClient(dial func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error)) *internalClient {
+func (c *HttpClient) createClient(ip *netaddr.IP) *internalClient {
     var rt http.RoundTripper
     if c.cfg.UseQuic {
-        rt = &http3.RoundTripper {
-            Dial: dial,
+        t := &http3.RoundTripper {}
+        if ip != nil {
+            t.Dial = func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+                if ip.Is6() {
+                    network = "udp6"
+                } else {
+                    network = "udp4"
+                }
+
+                remoteAddr, err := net.ResolveUDPAddr(network, addr)
+                if err != nil {
+                    return nil, err
+                }
+                udpConn, err := c.getSocket(*ip)
+                if err != nil {
+                    return nil, err
+                }
+                return quic.DialEarly(udpConn, remoteAddr, addr, tlsCfg, cfg)
+            }
         }
+        rt = t
+    } else {
+        t := http.DefaultTransport.(*http.Transport).Clone()
+        if ip != nil {
+            dialer := &net.Dialer{
+                Timeout:   30 * time.Second,
+                KeepAlive: 30 * time.Second,
+                LocalAddr: &net.TCPAddr{IP: netaddr2net(*ip), Port: 0},
+            }
+            t.DialContext = dialer.DialContext
+        }
+        rt = t
     }
     return &internalClient {
         client: &http.Client {
