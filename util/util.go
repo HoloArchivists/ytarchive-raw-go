@@ -1,6 +1,7 @@
 package util
 
 import (
+    "encoding/base64"
     "fmt"
     "os"
     "regexp"
@@ -177,6 +178,34 @@ func (f *FregJson) FormatTemplate(template string, filename bool) (string, error
 
         template = strings.ReplaceAll(template, match[0], val)
     }
+}
+
+func (f *FregJson) WriteThumbnail(path string) error {
+    b64 := f.Metadata.Thumbnail
+    if idx := strings.IndexByte(b64, ','); idx >= 0 {
+        b64 = b64[idx + 1:]
+    }
+
+    dec, err := base64.StdEncoding.DecodeString(b64)
+    if err != nil {
+        return err
+    }
+
+    file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    if _, err := file.Write(dec); err != nil {
+        return err
+    }
+
+    if err = file.Sync(); err != nil {
+        return err
+    }
+
+    return nil
 }
 
 var fnameReplacer = strings.NewReplacer(

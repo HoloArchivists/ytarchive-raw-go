@@ -3,7 +3,6 @@ package merge
 import (
     "bufio"
     "bytes"
-    "encoding/base64"
     "fmt"
     "os"
     "os/exec"
@@ -41,35 +40,6 @@ func hasProtocol(name string) bool {
     return !bytes.Contains(output, []byte("Unknown protocol "))
 }
 
-func writeThumbnail(options *MuxerOptions) (string, error) {
-    b64 := options.FregData.Metadata.Thumbnail
-    if idx := strings.IndexByte(b64, ','); idx >= 0 {
-        b64 = b64[idx + 1:]
-    }
-
-    dec, err := base64.StdEncoding.DecodeString(b64)
-    if err != nil {
-        return "", err
-    }
-
-    thumbnail := path.Join(options.TempDir, fmt.Sprintf("thumbnail-%s.jpg", options.FregData.Metadata.Id))
-    f, err := os.OpenFile(thumbnail, os.O_RDWR|os.O_CREATE, 0644)
-    if err != nil {
-        return "", err
-    }
-    defer f.Close()
-
-    if _, err := f.Write(dec); err != nil {
-        return "", err
-    }
-
-    if err = f.Sync(); err != nil {
-        return "", err
-    }
-
-    return thumbnail, nil
-}
-
 func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     args := make([]string, 0)
     args = append(
@@ -83,8 +53,8 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
         "copy",
     )
 
-    thumbnail, err := writeThumbnail(options)
-    if err != nil {
+    thumbnail := options.FinalFileBase + ".jpg"
+    if err := options.FregData.WriteThumbnail(thumbnail); err != nil {
         return fmt.Errorf("Unable to write thumbnail file: %v", err)
     }
     args = append(
@@ -117,15 +87,11 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     cmd.Stdout = nil
     cmd.Stderr = &stderr
 
-    if err = cmd.Run(); err != nil {
+    if err := cmd.Run(); err != nil {
         printOutput(options.Logger, &stderr, false)
         return err
     }
     printOutput(options.Logger, &stderr, true)
-
-    if options.DeleteSegments {
-        os.Remove(thumbnail)
-    }
 
     return nil
 }
