@@ -200,7 +200,7 @@ func downloadSegment(task *DownloadTask, status *segmentStatus, segment int) boo
         return false
     }
 
-    file, err := ioutil.TempFile("/tmp/ytarchive_test", "segment-")
+    file, err := ioutil.TempFile(task.SegmentDir, "segment-")
     if err != nil {
         task.logger().Warnf("Unable to create temp file for segment %d: %v", segment, err)
         return false
