@@ -4,8 +4,6 @@ import (
     "encoding/json"
     "fmt"
     "io/ioutil"
-    "sync"
-    "time"
 
     "github.com/notpeko/ytarchive-raw-go/download/segments"
     "github.com/notpeko/ytarchive-raw-go/log"
@@ -51,6 +49,13 @@ func MergeDownloadInfoJson(options *MuxerOptions, path string) error {
 
     options.FregData = info.FregData
 
+    if info.AudioSegments == nil {
+        options.IgnoreAudio = true
+    }
+    if info.VideoSegments == nil {
+        options.IgnoreVideo = true
+    }
+
     output, err := options.FregData.FormatTemplate(options.FinalFileBase, true)
     if err != nil {
         return err
@@ -76,7 +81,7 @@ func MergeDownloadInfoJson(options *MuxerOptions, path string) error {
 }
 
 func CreateDownloadOnlyMuxer(options *MuxerOptions) (Muxer, error) {
-    progress := &mergeProgress {}
+    progress := newProgress()
     return &DownloadOnlyMuxer {
         opts:        options,
         progress:    progress,
@@ -98,7 +103,7 @@ func (m *DownloadOnlyMuxer) Mux() error {
     m.videoMerger.wg.Wait()
     m.progress.done()
 
-    d := downloadJson {
+    d := &downloadJson {
         FregData:      m.opts.FregData,
         AudioSegments: m.audioMerger.segments,
         VideoSegments: m.videoMerger.segments,
@@ -117,18 +122,18 @@ func (m *DownloadOnlyMuxer) OutputFilePath() string {
 
 var _ Merger = &downloadOnlyTask {}
 type downloadOnlyTask struct {
-    logger   *log.Logger
-    progress *mergeProgress
-    which    string
-    wg       sync.WaitGroup
-    segments []segments.SegmentResult
+    taskCommon
+    segments   []segments.SegmentResult
 }
 
 func createDownloadOnlyTask(options *MuxerOptions, progress *mergeProgress, which string) *downloadOnlyTask {
     task := &downloadOnlyTask {
-        logger:   options.Logger.SubLogger(which),
-        progress: progress,
-        which:    which,
+        taskCommon: taskCommon {
+            ffmpegInput: "nil",
+            options:     options,
+            progress:    progress,
+            which:       which,
+        },
     }
     task.wg.Add(1)
     return task
@@ -137,33 +142,8 @@ func createDownloadOnlyTask(options *MuxerOptions, progress *mergeProgress, whic
 func (t *downloadOnlyTask) Merge(status *segments.SegmentStatus) {
     defer t.wg.Done()
 
-    t.progress.initTotal(status.Total())
-
-    misses := 0
-    for {
-        if status.Done() {
-            break
-        }
-        result, number, done := status.NextToMerge()
-        if !done {
-            t.logger.Debugf("Waiting for segment %d to be ready for merging", number)
-            time.Sleep(time.Duration(misses + 1) * time.Second)
-            misses++
-            //up to 10s wait
-            if misses > 9 {
-                misses = 9
-            }
-            continue
-        }
-        misses = 0
-
+    t.forEachSegment(status, func(result segments.SegmentResult) {
         t.segments = append(t.segments, result)
-
-        if t.which == "audio" {
-            t.progress.mergedAudio()
-        } else {
-            t.progress.mergedVideo()
-        }
-    }
+    })
 }
 

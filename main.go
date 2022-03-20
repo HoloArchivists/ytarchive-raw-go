@@ -61,7 +61,10 @@ func main() {
         DisableResume:   disableResume,
         FinalFileBase:   output,
         FregData:        &fregData,
-        Logger:          log.New("muxer.0"),
+        // this looks wrong but is correct
+        IgnoreAudio:     onlyVideo,
+        IgnoreVideo:     onlyAudio,
+        Logger:          log.New("muxer"),
         Merger:          merger,
         MergerArguments: mergerArgs,
         OverwriteTemp:   overwriteTemp,
@@ -117,7 +120,7 @@ func main() {
         Client:         client,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
-        Logger:         log.New("audio.0"),
+        Logger:         log.New("dl.audio"),
         Merger:         muxer.AudioMerger(),
         Progress:       progress.Audio(),
         QueueMode:      queueMode,
@@ -134,7 +137,7 @@ func main() {
         Client:         client,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
-        Logger:         log.New("video.0"),
+        Logger:         log.New("dl.video"),
         Merger:         muxer.VideoMerger(),
         Progress:       progress.Video(),
         QueueMode:      queueMode,
@@ -148,8 +151,20 @@ func main() {
         Url:            fregData.BestVideo(),
     }
 
-    audioTask.Start()
-    videoTask.Start()
+    if onlyAudio {
+        videoTask = nil
+        merge.MergeNothing(muxer.VideoMerger())
+    } else if onlyVideo {
+        audioTask = nil
+        merge.MergeNothing(muxer.AudioMerger())
+    }
+
+    if audioTask != nil {
+        audioTask.Start()
+    }
+    if videoTask != nil {
+        videoTask.Start()
+    }
 
     //start muxer early so segments can be deleted if keep-files is disabled
     //for the tcp muxer
@@ -158,11 +173,21 @@ func main() {
         muxerResult <- muxer.Mux()
     }()
 
-    audioRes := audioTask.Wait()
-    videoRes := videoTask.Wait()
+    var audioRes, videoRes *download.DownloadResult
 
-    printResult(audioTask.Logger, audioRes)
-    printResult(videoTask.Logger, videoRes)
+    if audioTask != nil {
+        audioRes = audioTask.Wait()
+    }
+    if videoTask != nil {
+        videoRes = videoTask.Wait()
+    }
+
+    if audioTask != nil {
+        printResult(audioTask.Logger, audioRes)
+    }
+    if videoTask != nil {
+        printResult(videoTask.Logger, videoRes)
+    }
 
     log.Info("Waiting for muxing to finish")
     log.Info("This can take a while for long videos, do NOT restart or all muxing progress will be lost")

@@ -21,10 +21,16 @@ type mergeProgress struct {
     video int
 }
 
+func newProgress() *mergeProgress {
+    return &mergeProgress {
+        total: -1,
+    }
+}
+
 func (m *mergeProgress) initTotal(total int) {
     m.mu.Lock()
     defer m.mu.Unlock()
-    if m.total == 0 {
+    if m.total < 0 {
         m.total = total
         m.updated()
     }
@@ -41,7 +47,12 @@ func (m *mergeProgress) done() {
 func (m *mergeProgress) updated() {
     done := m.audio + m.video
 
-    pct := float64(done) / float64(m.total) * 50
+    var pct float64
+    if m.total == 0 {
+        m.ended = true
+    } else {
+        pct = float64(done) / float64(m.total) * 50
+    }
 
     var color string
     if m.ended {

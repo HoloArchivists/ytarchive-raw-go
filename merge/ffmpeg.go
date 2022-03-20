@@ -41,17 +41,21 @@ func hasProtocol(name string) bool {
 }
 
 func muxFfmpeg(options *MuxerOptions, audio, video string) error {
+    if audio == "" && video == "" {
+        return fmt.Errorf("No audio or video inputs provided")
+    }
     args := make([]string, 0)
     args = append(
         args,
         "-y",
-        "-i",
-        audio,
-        "-i",
-        video,
-        "-c",
-        "copy",
     )
+    if audio != "" {
+        args = append(args, "-i", audio)
+    }
+    if video != "" {
+        args = append(args, "-i", video)
+    }
+    args = append(args, "-c", "copy")
 
     thumbnail := options.FinalFileBase + ".jpg"
     if err := options.FregData.WriteThumbnail(thumbnail); err != nil {

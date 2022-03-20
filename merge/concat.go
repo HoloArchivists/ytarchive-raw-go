@@ -5,11 +5,8 @@ import (
     "io"
     "os"
     "path/filepath"
-    "sync"
-    "time"
 
     "github.com/notpeko/ytarchive-raw-go/download/segments"
-    "github.com/notpeko/ytarchive-raw-go/log"
     "github.com/notpeko/ytarchive-raw-go/util"
 )
 
@@ -22,7 +19,7 @@ type ConcatMuxer struct {
 }
 
 func CreateConcatMuxer(options *MuxerOptions) (Muxer, error) {
-    progress := &mergeProgress {}
+    progress := newProgress()
 
     audioMerger, err := createConcatTask(options, progress, "audio")
     if err != nil {
@@ -57,18 +54,22 @@ func (m *ConcatMuxer) Mux() error {
 
     m.opts.Logger.Info("Merging into final file, progress won't be updated until it's done")
 
-    if err := muxFfmpeg(m.opts, m.audioMerger.targetFile, m.videoMerger.targetFile); err != nil {
+    if err := muxFfmpeg(m.opts, m.audioMerger.output(), m.videoMerger.output()); err != nil {
         return err
     }
     m.progress.done()
 
     m.opts.Logger.Debug("Download succeeded, removing merged segments")
-    if err := os.Remove(m.audioMerger.targetFile); err != nil {
-        m.opts.Logger.Warnf("Failed to remove merged audio: %v", err)
-    }
-    if err := os.Remove(m.videoMerger.targetFile); err != nil {
-        m.opts.Logger.Warnf("Failed to remove merged video: %v", err)
-    }
+    m.audioMerger.do(func() {
+        if err := os.Remove(m.audioMerger.output()); err != nil {
+            m.opts.Logger.Warnf("Failed to remove merged audio: %v", err)
+        }
+    })
+    m.videoMerger.do(func() {
+        if err := os.Remove(m.videoMerger.output()); err != nil {
+            m.opts.Logger.Warnf("Failed to remove merged video: %v", err)
+        }
+    })
 
     if m.opts.DeleteSegments {
         deleteSegmentFiles(m.audioMerger.segments)
@@ -84,12 +85,8 @@ func (m *ConcatMuxer) OutputFilePath() string {
 
 var _ Merger = &concatTask {}
 type concatTask struct {
+    taskCommon
     deleteSegments bool
-    logger         *log.Logger
-    progress       *mergeProgress
-    targetFile     string
-    which          string
-    wg             sync.WaitGroup
     segments       []string
 }
 
@@ -105,11 +102,13 @@ func createConcatTask(options *MuxerOptions, progress *mergeProgress, which stri
     }
 
     task := &concatTask {
+        taskCommon:     taskCommon {
+            ffmpegInput: file,
+            options:     options,
+            progress:    progress,
+            which:       which,
+        },
         deleteSegments: options.DisableResume,
-        logger:         options.Logger.SubLogger(which),
-        progress:       progress,
-        targetFile:     file,
-        which:          which,
     }
     task.wg.Add(1)
     return task, nil
@@ -135,30 +134,12 @@ func copyFile(from string, to string) error {
 func (t *concatTask) Merge(status *segments.SegmentStatus) {
     defer t.wg.Done()
 
-    t.progress.initTotal(status.Total())
-
-    misses := 0
-    for {
-        if status.Done() {
-            break
-        }
-        result, number, done := status.NextToMerge()
-        if !done {
-            t.logger.Debugf("Waiting for segment %d to be ready for merging", number)
-            time.Sleep(time.Duration(misses + 1) * time.Second)
-            misses++
-            //up to 10s wait
-            if misses > 9 {
-                misses = 9
-            }
-            continue
-        }
-        misses = 0
-
+    t.forEachSegment(status, func(result segments.SegmentResult) {
         if result.Ok {
-            err := copyFile(result.Filename, t.targetFile)
+            target := t.ffmpegInput
+            err := copyFile(result.Filename, target)
             if err != nil {
-                t.logger.Errorf("Unable to merge file '%s' into '%s': %v", result.Filename, t.targetFile, err)
+                t.log().Errorf("Unable to merge file '%s' into '%s': %v", result.Filename, target, err)
             } else {
                 if t.deleteSegments {
                     os.Remove(result.Filename)
@@ -167,12 +148,6 @@ func (t *concatTask) Merge(status *segments.SegmentStatus) {
                 }
             }
         }
-
-        if t.which == "audio" {
-            t.progress.mergedAudio()
-        } else {
-            t.progress.mergedVideo()
-        }
-    }
+    })
 }
 

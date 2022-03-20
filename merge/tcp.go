@@ -5,11 +5,8 @@ import (
     "io"
     "net"
     "os"
-    "sync"
-    "time"
 
     "github.com/notpeko/ytarchive-raw-go/download/segments"
-    "github.com/notpeko/ytarchive-raw-go/log"
 )
 
 var _ Muxer = &TcpMuxer {}
@@ -31,7 +28,7 @@ func CreateTcpMuxer(options *MuxerOptions) (Muxer, error) {
         bindAddress = "127.0.0.1"
     }
 
-    progress := &mergeProgress {}
+    progress := newProgress()
 
     audioMerger, err := createTcpTask(bindAddress, options, progress, "audio")
     if err != nil {
@@ -60,13 +57,17 @@ func (m *TcpMuxer) VideoMerger() Merger {
 }
 
 func (m *TcpMuxer) Mux() error {
-    if err := muxFfmpeg(m.opts, m.audioMerger.addr(), m.videoMerger.addr()); err != nil {
+    if err := muxFfmpeg(m.opts, m.audioMerger.output(), m.videoMerger.output()); err != nil {
         return err
     }
     m.progress.done()
 
-    m.audioMerger.listener.Close()
-    m.videoMerger.listener.Close()
+    if m.audioMerger.listener != nil {
+        m.audioMerger.listener.Close()
+    }
+    if m.videoMerger.listener != nil {
+        m.videoMerger.listener.Close()
+    }
 
     if m.opts.DeleteSegments {
         deleteSegmentFiles(m.audioMerger.segments)
@@ -82,36 +83,33 @@ func (m *TcpMuxer) OutputFilePath() string {
 
 var _ Merger = &tcpTask {}
 type tcpTask struct {
+    taskCommon
     deleteSegments bool
     listener       net.Listener
-    logger         *log.Logger
-    progress       *mergeProgress
-    which          string
     segments       []string
-    wg             sync.WaitGroup
 }
 
 func createTcpTask(bindAddress string, options *MuxerOptions, progress *mergeProgress, which string) (*tcpTask, error) {
-    l, err := net.Listen("tcp", net.JoinHostPort(bindAddress, "0"))
-    if err != nil {
-        return nil, fmt.Errorf("Unable to start listening: %v", err)
-    }
-
     task := &tcpTask {
+        taskCommon:     taskCommon {
+            options:     options,
+            progress:    progress,
+            which:       which,
+        },
         deleteSegments: options.DisableResume,
-        listener:       l,
-        logger:         options.Logger.SubLogger(which),
-        progress:       progress,
-        which:          which,
     }
 
-    task.logger.Debugf("Listening on address %v", l.Addr())
-    task.wg.Add(1)
-    return task, nil
-}
+    if !task.ignored() {
+        l, err := net.Listen("tcp", net.JoinHostPort(bindAddress, "0"))
+        if err != nil {
+            return nil, fmt.Errorf("Unable to start listening: %v", err)
+        }
+        task.log().Debugf("Listening on address %v", l.Addr())
+        task.listener = l
+        task.ffmpegInput = "tcp://" + l.Addr().String()
+    }
 
-func (t *tcpTask) addr() string {
-    return "tcp://" + t.listener.Addr().String()
+    return task, nil
 }
 
 func sendFile(file string, conn net.Conn) error {
@@ -126,38 +124,24 @@ func sendFile(file string, conn net.Conn) error {
 }
 
 func (t *tcpTask) Merge(status *segments.SegmentStatus) {
-    conn, err := t.listener.Accept()
-    if err != nil {
-        t.logger.Errorf("Unable to accept connection: %v", err)
+    if t.listener == nil {
+        t.forEachSegment(status, func(_ segments.SegmentResult) {})
         return
     }
-    t.logger.Info("Got connection")
 
-    t.progress.initTotal(status.Total())
+    conn, err := t.listener.Accept()
+    if err != nil {
+        t.log().Errorf("Unable to accept connection: %v", err)
+        return
+    }
+    defer conn.Close()
 
-    misses := 0
-    for {
-        if status.Done() {
-            conn.Close()
-            break
-        }
-        result, number, done := status.NextToMerge()
-        if !done {
-            t.logger.Debugf("Waiting for segment %d to be ready for merging", number)
-            time.Sleep(time.Duration(misses + 1) * time.Second)
-            misses++
-            //up to 10s wait
-            if misses > 9 {
-                misses = 9
-            }
-            continue
-        }
-        misses = 0
-
+    t.log().Info("Got connection")
+    t.forEachSegment(status, func(result segments.SegmentResult) {
         if result.Ok {
             err := sendFile(result.Filename, conn)
             if err != nil {
-                t.logger.Errorf("Unable to send file '%s' to muxer: %v", result.Filename, err)
+                t.log().Errorf("Unable to send file '%s' to muxer: %v", result.Filename, err)
             } else {
                 if t.deleteSegments {
                     os.Remove(result.Filename)
@@ -166,12 +150,6 @@ func (t *tcpTask) Merge(status *segments.SegmentStatus) {
                 }
             }
         }
-
-        if t.which == "audio" {
-            t.progress.mergedAudio()
-        } else {
-            t.progress.mergedVideo()
-        }
-    }
+    })
 }
 
