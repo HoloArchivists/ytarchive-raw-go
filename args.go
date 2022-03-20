@@ -15,6 +15,14 @@ import (
     "github.com/notpeko/ytarchive-raw-go/util"
 )
 
+const (
+	VersionMajor = 1
+	VersionMinor = 0
+	VersionPatch = 0
+)
+
+var Commit string
+
 const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s).mkv"
 
 var (
@@ -34,10 +42,16 @@ var (
     threads        uint
     useQuic        bool
     verbose        bool
+    versionPrint   bool
 )
+
+func printVersion() {
+    fmt.Printf("ytarchive-raw-go %d.%d.%d commit %s\n", VersionMajor, VersionMinor, VersionPatch, Commit)
+}
 
 func printUsage() {
     self := filepath.Base(os.Args[0])
+    printVersion()
     fmt.Printf(`
 Usage: %[1]s [OPTIONS]
 
@@ -119,6 +133,9 @@ Options:
         -v, --verbose
                 Sets log level to 'debug' if present. Overrides the 'log-level' flag.
 
+        -V, --version
+                Print the version and exit.
+
 Examples:
         %[1]s -i dQw4w9WgXcQ.urls.json
         %[1]s --threads 12 -i WTf8-KT6fWA.urls.json
@@ -189,11 +206,20 @@ func init() {
 
     flagSet.BoolVar(&fsync, "fsync", false, "Force flushing of OS buffers after writing segment files.")
 
+    flagSet.BoolVar(&versionPrint, "V",       false, "Print version and exit")
+    flagSet.BoolVar(&versionPrint, "version", false, "Print version and exit")
+
     flagSet.StringVar(&logLevel, "log-level", "info", "Log level to use (debug, info, warn, error, fatal).")
 }
 
 func parseArgs() {
     flagSet.Parse(os.Args[1:])
+
+    if versionPrint {
+        printVersion()
+        os.Exit(1)
+    }
+
     if verbose {
         logLevel = "debug"
     }
