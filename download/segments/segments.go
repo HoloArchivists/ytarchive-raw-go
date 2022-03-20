@@ -2,6 +2,7 @@ package segments
 
 import (
     "sync"
+    "time"
 )
 
 type QueueMode int
@@ -70,13 +71,13 @@ func (s *SegmentStatus) Done() bool {
     return s.mergedCount == s.end
 }
 
-func Create(segmentCount int, threads int, mode QueueMode) *SegmentStatus {
+func Create(segmentCount int, threads int, mode QueueMode, requeueDelay time.Duration) *SegmentStatus {
     var scheduler workScheduler
     switch mode {
     case QueueOutOfOrder:
-        scheduler = makeBatchedScheduler(segmentCount, threads)
+        scheduler = makeBatchedScheduler(segmentCount, requeueDelay, threads)
     case QueueSequential:
-        scheduler = makeSequentialScheduler(segmentCount)
+        scheduler = makeSequentialScheduler(segmentCount, requeueDelay)
     }
 
     ret := &SegmentStatus {

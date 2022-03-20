@@ -10,10 +10,11 @@ import (
 )
 
 const (
-    colorGreen  = "\033[32m"
-    colorRed    = "\033[91m"
-    colorReset  = "\033[0m"
-    colorYellow = "\033[93m"
+    colorGreen   = "\033[32m"
+    colorMagenta = "\033[35m"
+    colorRed     = "\033[91m"
+    colorReset   = "\033[0m"
+    colorYellow  = "\033[93m"
 )
 
 type Progress struct {
@@ -22,6 +23,7 @@ type Progress struct {
     downloaded int
     failed     int
     total      int
+    requeues   map[int]struct{}
     start      time.Time
     end        time.Time
     expire     *time.Time
@@ -44,9 +46,17 @@ func (p *Progress) lost() {
     p.updated()
 }
 
-func (p *Progress) done(cached bool) {
+func (p *Progress) requeued(segment int) {
     p.parent.mu.Lock()
     defer p.parent.mu.Unlock()
+    p.requeues[segment] = struct{}{}
+}
+
+func (p *Progress) done(segment int, cached bool) {
+    p.parent.mu.Lock()
+    defer p.parent.mu.Unlock()
+
+    delete(p.requeues, segment)
 
     if cached {
         p.cached++
@@ -81,6 +91,12 @@ func (p *Progress) fmt() string {
         }
         return fmt.Sprintf(", %slost %d%s", colorRed, p.failed, color)
     }
+    requeuedString := func(color string) string {
+        if len(p.requeues) == 0 {
+            return ""
+        }
+        return fmt.Sprintf(", %srequeued %d%s", colorMagenta, len(p.requeues), color)
+    }
 
     if finished == p.total {
         color := colorGreen
@@ -113,22 +129,24 @@ func (p *Progress) fmt() string {
             color = colorRed
         }
         return fmt.Sprintf(
-            "%s%.2f%% (%d/%d%s, eta %s)%s",
+            "%s%.2f%% (%d/%d%s%s, eta %s)%s",
             color,
             progress * 100,
             successful,
             p.total,
+            requeuedString(color),
             lostString(color),
             formatDuration(eta),
             colorReset,
         )
     } else {
         return fmt.Sprintf(
-            "%s%.2f%% (%d/%d%s, eta unknown)%s",
+            "%s%.2f%% (%d/%d%s%s, eta unknown)%s",
             colorYellow,
             progress * 100,
             successful,
             p.total,
+            requeuedString(colorYellow),
             lostString(colorYellow),
             colorReset,
         )
@@ -144,12 +162,14 @@ type TotalProgress struct {
 func NewProgress() *TotalProgress {
     p := &TotalProgress {}
     p.audio = &Progress {
-        parent: p,
-        total:  -1,
+        parent:   p,
+        requeues: make(map[int]struct{}),
+        total:    -1,
     }
     p.video = &Progress {
-        parent: p,
-        total:  -1,
+        parent:   p,
+        requeues: make(map[int]struct{}),
+        total:    -1,
     }
     return p
 }

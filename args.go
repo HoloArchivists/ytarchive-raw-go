@@ -8,6 +8,7 @@ import (
     "os"
     "path/filepath"
     "strings"
+    "time"
 
     "github.com/notpeko/ytarchive-raw-go/download"
     "github.com/notpeko/ytarchive-raw-go/download/segments"
@@ -39,6 +40,9 @@ var (
     overwriteTemp  bool
     queue          string
     queueMode      segments.QueueMode
+    requeueDelay   time.Duration
+    requeueFailed  uint
+    requeueLast    bool
     retryThreshold uint
     tempDir        string
     threads        uint
@@ -124,6 +128,24 @@ Options:
                 are done.
 
                 Default is 'sequential'
+
+        --requeue-delay DELAY
+                Minimum amount of time to wait before redownloading a segment
+                once it's been requeued. Valid delay units are s, m, h.
+
+                Default is 2m.
+
+        --requeue-failed AMOUNT
+                How many times should failed segments be requeued for download.
+                Requeueing happens *after* a segment has failed 'retries' number
+                of times, so that instead of giving it up it gets queued to be
+                re-tried later.
+
+                Default is 1.
+
+        --requeue-last
+                If used, the last segment is allowed to be requeued, otherwise
+                it'll be failed instantly.
         
         --retries AMOUNT
                 Amount of times to retry downloading segments on failure.
@@ -233,6 +255,10 @@ func init() {
     flagSet.BoolVar(&versionPrint, "version", false, "Print version and exit")
 
     flagSet.StringVar(&logLevel, "log-level", "info", "Log level to use (debug, info, warn, error, fatal).")
+
+    flagSet.DurationVar(&requeueDelay, "requeue-delay", 2 * time.Minute, "How long to wait before retrying a requeued segment.")
+    flagSet.UintVar(&requeueFailed, "requeue-failed", 1, "How many times should failed segments be requeued.")
+    flagSet.BoolVar(&requeueLast, "requeue-last", false, "Whether or not the last segment should be requeued.")
 
     flagSet.StringVar(&merger, "merger", "", "Which merger to use.")
 

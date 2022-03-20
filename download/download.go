@@ -38,6 +38,9 @@ type DownloadTask struct {
     Merger         merge.Merger
     Progress       *Progress
     QueueMode      segments.QueueMode
+    RequeueDelay   time.Duration
+    RequeueFailed  uint
+    RequeueLast    bool
     RetryThreshold uint
     SegmentDir     string
     Threads        uint
@@ -175,7 +178,7 @@ func (d *DownloadTask) run() {
 
     d.Progress.init(segmentCount, d.expire)
 
-    segmentStatus := segments.Create(segmentCount, int(d.Threads), d.QueueMode)
+    segmentStatus := segments.Create(segmentCount, int(d.Threads), d.QueueMode, d.RequeueDelay)
     go d.Merger.Merge(segmentStatus)
 
     var downloadGroup sync.WaitGroup
@@ -216,11 +219,13 @@ func downloadTask(
     queue := status.CreateQueue(int(threadNumber))
 
     failCount := uint(0)
+
     seg := -1
+    requeues := uint(0)
     for {
         if seg == -1 {
             var ok bool
-            seg, ok = queue.NextSegment()
+            seg, requeues, ok = queue.NextSegment()
             if !ok {
                 task.logger().Infof("Thread %d done", threadNumber)
                 break
@@ -242,6 +247,16 @@ func downloadTask(
         }
 
         if failCount >= fails {
+            if requeues < task.RequeueFailed && (!status.IsLast(seg) || task.RequeueLast) {
+                task.logger().Warnf("Failed segment %d, requeue %d/%d", seg, requeues + 1, task.RequeueFailed)
+                queue.RequeueFailed(seg, requeues + 1)
+                task.Progress.requeued(seg)
+
+                seg = -1
+                failCount = 0
+                continue
+            }
+
             task.logger().Warnf("Giving up segment %d", seg)
 
             status.Downloaded(seg, segments.SegmentResult { Ok: false })
@@ -256,7 +271,7 @@ func downloadTask(
 
         ok, cached := downloadSegment(task, status, seg)
         if ok {
-            task.Progress.done(cached)
+            task.Progress.done(seg, cached)
 
             seg = -1
             failCount = 0
@@ -371,12 +386,14 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
 }
 
 func doRequest(task *DownloadTask, req *http.Request) (*http.Response, error) {
+    var errors []error
     for i := uint(0); i < task.RetryThreshold; i++ {
         resp, err := task.Client.Do(req)
         if err == nil {
             return resp, nil
         }
+        errors = append(errors, err)
     }
-    return nil, fmt.Errorf("All requests failed")
+    return nil, fmt.Errorf("All requests failed: %v", errors)
 }
 
