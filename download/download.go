@@ -19,8 +19,8 @@ const (
     QueueOutOfOrder
 )
 
-const FailThreshold = 20
-const RetryThreshold = 3
+const DefaultFailThreshold = 20
+const DefaultRetryThreshold = 3
 
 var defaultClient = &http.Client {}
 
@@ -33,9 +33,11 @@ type DownloadResult struct {
 type DownloadTask struct {
     Client         *http.Client
     DeleteSegments bool
+    FailThreshold  uint
     Logger         *log.Logger
     MergeFile      string
     QueueMode      QueueMode
+    RetryThreshold uint
     SegmentDir     string
     Threads        uint
     Url            string
@@ -48,9 +50,17 @@ func (d *DownloadTask) Start() {
     if d.started {
         return
     }
+
+    if d.FailThreshold < 1 {
+        d.FailThreshold = DefaultFailThreshold
+    }
+    if d.RetryThreshold < 1 {
+        d.RetryThreshold = DefaultRetryThreshold
+    }
     if d.Threads < 1 {
         d.Threads = 1
     }
+
     if len(d.Url) == 0 {
         log.Fatal("Empty URL")
     }
@@ -129,7 +139,7 @@ func downloadTask(
     defer wg.Done()
     queue := status.createQueue(int(threadNumber))
 
-    failCount := 0
+    failCount := uint(0)
     seg := -1
     for {
         if seg == -1 {
@@ -145,16 +155,16 @@ func downloadTask(
         }
 
         //the last segment often isn't available, so use less retries for it
-        fails := FailThreshold
+        fails := task.FailThreshold
         if seg == status.end - 1 {
             //at least 5
-            fails = FailThreshold / 4
+            fails = task.FailThreshold / 4
             if fails < 5 {
                 fails = 5
             }
         }
 
-        if failCount >= FailThreshold {
+        if failCount >= fails {
             task.logger().Warnf("Giving up segment %d", seg)
 
             status.downloaded(seg, segmentResult { ok: false })
@@ -176,7 +186,7 @@ func downloadTask(
             failCount = 0
         } else {
             failCount++
-            task.logger().Debugf("Failed segment %d [%d/%d]", seg, failCount, FailThreshold)
+            task.logger().Debugf("Failed segment %d [%d/%d]", seg, failCount, fails)
 
             //exponential backoff, up to 4 seconds between retries
             sleepShift := failCount
@@ -242,7 +252,7 @@ func downloadSegment(task *DownloadTask, status *segmentStatus, segment int) boo
 }
 
 func doRequest(task *DownloadTask, req *http.Request) (*http.Response, error) {
-    for i := 0; i < RetryThreshold; i++ {
+    for i := uint(0); i < task.RetryThreshold; i++ {
         resp, err := task.Client.Do(req)
         if err == nil {
             return resp, nil

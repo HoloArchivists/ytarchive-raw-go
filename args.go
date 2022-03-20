@@ -7,7 +7,6 @@ import (
     "io/ioutil"
     "os"
     "strings"
-    "time"
 
     "github.com/notpeko/ytarchive-raw-go/download"
     "github.com/notpeko/ytarchive-raw-go/log"
@@ -16,12 +15,13 @@ import (
 const DefaultOutputFormat = "%(upload_date)s %(title)s (%(id)s).mkv"
 
 var (
-    output    string
-    threads   uint
-    timeout   time.Duration
-    logLevel  string
-    fregData  FregJson
-    queueMode download.QueueMode
+    failThreshold  uint
+    fregData       FregJson
+    logLevel       string
+    output         string
+    queueMode      download.QueueMode
+    retryThreshold uint
+    threads        uint
 )
 
 func init() {
@@ -37,8 +37,11 @@ func init() {
     flags.UintVar(&threads, "t",       1, "Multi-threaded download.")
     flags.UintVar(&threads, "threads", 1, "Multi-threaded download.")
 
-    flags.DurationVar(&timeout, "T",       20 * time.Second, "Secs for retrying when encounter HTTP errors. Default 20.")
-    flags.DurationVar(&timeout, "timeout", 20 * time.Second, "Secs for retrying when encounter HTTP errors. Default 20.")
+    flags.UintVar(&retryThreshold, "c",               download.DefaultRetryThreshold, "Amount of times to retry a request on connection failure.")
+    flags.UintVar(&retryThreshold, "connect-retries", download.DefaultRetryThreshold, "Amount of times to retry a request on connection failure.")
+
+    flags.UintVar(&failThreshold, "r",       download.DefaultFailThreshold, "Amount of times to retry downloading segments on failure.")
+    flags.UintVar(&failThreshold, "retries", download.DefaultFailThreshold, "Amount of times to retry downloading segments on failure.")
 
     var queue string
     flags.StringVar(&queue, "q",          "auto", "Order to download segments (sequential, out-of-order, auto).")

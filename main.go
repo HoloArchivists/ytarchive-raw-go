@@ -27,9 +27,11 @@ func main() {
     audioTask := &download.DownloadTask {
         Client:         client,
         DeleteSegments: true,
+        FailThreshold:  failThreshold,
         Logger:         log.New("audio.0"),
         MergeFile:      "/tmp/out.audio.0",
         QueueMode:      queueMode,
+        RetryThreshold: retryThreshold,
         SegmentDir:     "/tmp/ytarchive_test",
         Threads:        threads,
         Url:            fregData.BestAudio(),
@@ -37,9 +39,11 @@ func main() {
     videoTask := &download.DownloadTask {
         Client:         client,
         DeleteSegments: true,
+        FailThreshold:  failThreshold,
         Logger:         log.New("video.0"),
         MergeFile:      "/tmp/out.video.0",
         QueueMode:      queueMode,
+        RetryThreshold: retryThreshold,
         SegmentDir:     "/tmp/ytarchive_test",
         Threads:        threads,
         Url:            fregData.BestVideo(),
