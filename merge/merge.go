@@ -17,6 +17,7 @@ type Muxer interface {
     AudioMerger() Merger
     VideoMerger() Merger
     Mux() error
+    OutputFilePath() string
 }
 
 func CreateBestMuxer(opts *MuxerOptions) (Muxer, error) {

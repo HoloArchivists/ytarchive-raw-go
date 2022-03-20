@@ -66,6 +66,10 @@ func (m *ConcatMuxer) Mux() error {
     return nil
 }
 
+func (m *ConcatMuxer) OutputFilePath() string {
+    return m.opts.FinalFileBase + ".mkv"
+}
+
 var _ Merger = &concatTask {}
 type concatTask struct {
     deleteSegments bool

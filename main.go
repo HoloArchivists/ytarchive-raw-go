@@ -7,13 +7,13 @@ import (
     "os"
     "path"
 
-    "github.com/gofrs/flock"
     "github.com/lucas-clemente/quic-go/http3"
     "github.com/mattn/go-colorable"
 
     "github.com/notpeko/ytarchive-raw-go/download"
     "github.com/notpeko/ytarchive-raw-go/log"
     "github.com/notpeko/ytarchive-raw-go/merge"
+    "github.com/notpeko/ytarchive-raw-go/util"
 )
 
 func printResult(logger *log.Logger, res *download.DownloadResult) {
@@ -44,17 +44,10 @@ func main() {
         }
     }
 
-    lock := flock.New(path.Join(tempDir, fregData.Metadata.Id + ".lock"))
-    locked, err := lock.TryLock()
-    if err != nil {
-        log.Fatalf("Failed to lock file: %v", err)
-    }
-    if !locked {
+    defer util.LockFile(path.Join(tempDir, fregData.Metadata.Id + ".lock"), func() {
         log.Error("This video is already being downloaded by another instance.")
         log.Error("Running two instances on the same video with the same temporary directory is not supported.")
-        os.Exit(1)
-    }
-    defer lock.Unlock()
+    })()
 
     muxerOpts := &merge.MuxerOptions {
         DeleteSegments:  !keepFiles,
@@ -90,6 +83,10 @@ func main() {
     if err != nil {
         log.Fatalf("Unable to create muxer: %v", err)
     }
+
+    defer util.LockFile(muxer.OutputFilePath() + ".lock", func() {
+        log.Error("Another instance is already writing to this output file.")
+    })()
 
     progress := download.NewProgress(windowName)
 

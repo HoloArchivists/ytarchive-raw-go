@@ -52,6 +52,10 @@ func MergeDownloadInfoJson(options *MuxerOptions, path string) error {
     }
     options.FinalFileBase = output
 
+    defer util.LockFile(output + ".lock", func() {
+        log.Error("Another instance is already writing to this output file.")
+    })()
+
     options.Logger.Infof("Saving output to %s", output)
 
     mux, err := CreateBestMuxer(options)
@@ -96,6 +100,10 @@ func (m *DownloadOnlyMuxer) Mux() error {
         return err
     }
     return ioutil.WriteFile(m.opts.FinalFileBase + ".json", j, 0644)
+}
+
+func (m *DownloadOnlyMuxer) OutputFilePath() string {
+    return m.opts.FinalFileBase + ".json"
 }
 
 var _ Merger = &downloadOnlyTask {}

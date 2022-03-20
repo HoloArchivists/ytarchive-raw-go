@@ -67,6 +67,10 @@ func (m *TcpMuxer) Mux() error {
     return nil
 }
 
+func (m *TcpMuxer) OutputFilePath() string {
+    return m.opts.FinalFileBase + ".mkv"
+}
+
 var _ Merger = &tcpTask {}
 type tcpTask struct {
     deleteSegments bool
