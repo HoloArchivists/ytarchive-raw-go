@@ -10,6 +10,20 @@ import (
     "github.com/notpeko/ytarchive-raw-go/log"
 )
 
+var bestVideoFormats = []int{
+    337, 315, 266, 138, // 2160p60
+    313, 336, // 2160p
+    308, // 1440p60
+    271, 264, // 1440p
+    335, 303, 299, // 1080p60
+    248, 169, 137, // 1080p
+    334, 302, 298, // 720p60
+    247, 136, // 720p
+}
+var bestAudioFormats = []int{
+    251, 141, 171, 140, 250, 249, 139,
+}
+
 type FregMetadata struct {
     Title          string    `json:"title"`
     Id             string    `json:"id"`
@@ -22,13 +36,34 @@ type FregMetadata struct {
 }
 
 type FregJson struct {
-    Video      map[string]string `json:"video"`
-    Audio      map[string]string `json:"audio"`
+    Video      map[int]string    `json:"video"`
+    Audio      map[int]string    `json:"audio"`
     Metadata   FregMetadata      `json:"metadata"`
     Version    string            `json:"version"`
     CreateTime time.Time         `json:"createTime"`
     formatVals map[string]string
     formatLock sync.Mutex
+}
+
+func pickBest(urls map[int]string, order []int) string {
+    for _, v := range order {
+        url, ok := urls[v]
+        if ok {
+            return url
+        }
+    }
+    for _, v := range urls {
+        return v
+    }
+    panic("No URLs found")
+}
+
+func (f *FregJson) BestVideo() string {
+    return pickBest(f.Video, bestVideoFormats)
+}
+
+func (f *FregJson) BestAudio() string {
+    return pickBest(f.Audio, bestAudioFormats)
 }
 
 func (f *FregJson) fillFormatVals() {
@@ -100,3 +135,4 @@ var fnameReplacer = strings.NewReplacer(
 func sanitizeFilename(s string) string {
     return fnameReplacer.Replace(s)
 }
+

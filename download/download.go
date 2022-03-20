@@ -24,14 +24,16 @@ type DownloadResult struct {
 }
 
 type DownloadTask struct {
-    Client        *http.Client
-    Url           string
-    TmpFile       string
-    Logger        *log.Logger
-    Threads       uint
-    wg            sync.WaitGroup
-    result        DownloadResult
-    started       bool
+    Client         *http.Client
+    DeleteSegments bool
+    Logger         *log.Logger
+    MergeFile      string
+    SegmentDir     string
+    Threads        uint
+    Url            string
+    wg             sync.WaitGroup
+    result         DownloadResult
+    started        bool
 }
 
 func (d *DownloadTask) Start() {
@@ -44,8 +46,11 @@ func (d *DownloadTask) Start() {
     if len(d.Url) == 0 {
         log.Fatal("Empty URL")
     }
-    if len(d.TmpFile) == 0 {
-        log.Fatal("Empty TmpFile")
+    if len(d.MergeFile) == 0 {
+        log.Fatal("Empty MergeFile")
+    }
+    if len(d.SegmentDir) == 0 {
+        log.Fatal("Empty SegmentDir")
     }
 
     d.wg.Add(1)
@@ -87,7 +92,7 @@ func (d *DownloadTask) run() {
         d.logger().Infof("|%s| %.2f%% (%d/%d)", msg, progress * 100, finished, total)
     })
 
-    mergeTask := makeMergeTask(d, segmentStatus, d.TmpFile)
+    mergeTask := makeMergeTask(d, segmentStatus, d.MergeFile)
 
     var downloadGroup sync.WaitGroup
     for i := uint(0); i < d.Threads; i++ {
