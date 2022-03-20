@@ -55,10 +55,31 @@ func parseDownloadURL(rawUrl string) (*parsedURL, error) {
         findField = func(name string) string {
             for i := 0; i < len(fields); i += 2 {
                 if fields[i] == name {
+                    //handle trailing slash
+                    if i + 1 == len(fields) {
+                        return ""
+                    }
                     return fields[i + 1]
                 }
             }
             return ""
+        }
+        hasSq := false
+        for i := 0; i < len(fields); i += 2 {
+            if fields[i] == "sq" {
+                hasSq = true
+            }
+        }
+        if hasSq {
+            val := findField("sq")
+            if strings.HasSuffix(p.raw, "/sq/" + val) {
+                //strip sq value and separating / from url
+                p.raw = p.raw[:len(p.raw) - (len(val) + 1)]
+            } else if !strings.HasSuffix(p.raw, "/sq") {
+                return nil, fmt.Errorf("URL has 'sq' parameter but it's not the last")
+            }
+        } else {
+            p.raw = p.raw + "/sq"
         }
     }
 
