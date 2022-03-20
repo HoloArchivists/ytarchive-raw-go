@@ -171,7 +171,6 @@ func (d *DownloadTask) run() {
         d.result.Error = err
         return
     }
-    segmentCount = 200
     d.result.TotalSegments = segmentCount
 
     d.Progress.init(segmentCount, d.expire)
