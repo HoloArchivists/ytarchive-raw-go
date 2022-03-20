@@ -156,15 +156,16 @@ func main() {
     if printNewVersion {
         log.Warnf("New version available: %s", latestVersion)
     }
+    if res != nil {
+        log.Fatalf("Muxing failed: %v", res)
+    }
+
     if deleteTempDir {
         if err = os.RemoveAll(tempDir); err != nil {
             log.Warnf("Failed to delete temp dir: %v", err)
         }
     }
 
-    if res != nil {
-        log.Fatalf("Muxing failed: %v", res)
-    }
     log.Info("Success!")
 }
 
