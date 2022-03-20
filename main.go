@@ -169,5 +169,6 @@ func main() {
     }
 
     log.Info("Success!")
+    fmt.Fprintf(os.Stderr, "\n")
 }
 
