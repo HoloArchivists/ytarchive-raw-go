@@ -82,13 +82,13 @@ type HttpClientConfig struct {
 }
 
 type HttpClient struct {
-    cfg        *HttpClientConfig
-    socketLock sync.Mutex
-    sockets    map[netaddr.IP]quic.OOBCapablePacketConn
-    clientLock sync.Mutex
-    clients    map[netaddr.IP]*internalClient
+    cfg            *HttpClientConfig
+    socketsLock    sync.Mutex
+    sockets        map[netaddr.IP]quic.OOBCapablePacketConn
+    requestersLock sync.Mutex
+    requesters     map[netaddr.IP]*HttpRequester
     // used for NetworkAny
-    anyClient  *internalClient
+    anyRequester   *HttpRequester
 }
 
 func NewClient(cfg *HttpClientConfig) *HttpClient {
@@ -116,16 +116,37 @@ func (c *HttpClient) GetRequester() *HttpRequester {
             panic(fmt.Sprintf("Unhandled network type %v", c.cfg.Network))
         }
     }
-    return &HttpRequester {
-        owner:  c,
-        client: c.getClient(bindAddr),
-        ip:     bindAddr,
+    c.requestersLock.Lock()
+    defer c.requestersLock.Unlock()
+
+    if bindAddr == nil {
+        if c.anyRequester == nil {
+            c.anyRequester = &HttpRequester {
+                owner: c,
+                ip:    nil,
+            }
+        }
+        return c.anyRequester
     }
+
+    if c.requesters == nil {
+        c.requesters = make(map[netaddr.IP]*HttpRequester)
+    }
+
+    req := c.requesters[*bindAddr]
+    if req == nil {
+        req = &HttpRequester {
+            owner: c,
+            ip:    bindAddr,
+        }
+        c.requesters[*bindAddr] = req
+    }
+    return req
 }
 
 func (c *HttpClient) getSocket(ip netaddr.IP) (quic.OOBCapablePacketConn, error) {
-    c.socketLock.Lock()
-    defer c.socketLock.Unlock()
+    c.socketsLock.Lock()
+    defer c.socketsLock.Unlock()
     if c.sockets == nil {
         c.sockets = make(map[netaddr.IP]quic.OOBCapablePacketConn)
     }
@@ -147,54 +168,6 @@ func (c *HttpClient) getSocket(ip netaddr.IP) (quic.OOBCapablePacketConn, error)
     }
     c.sockets[ip] = udpConn
     return udpConn, nil
-}
-
-func (c *HttpClient) dropClient(ip *netaddr.IP, expectedClient *internalClient) {
-    c.clientLock.Lock()
-    defer c.clientLock.Unlock()
-
-    if ip == nil {
-        if c.anyClient == expectedClient {
-            c.anyClient.startClose()
-            c.anyClient = nil
-        }
-        return
-    }
-
-    if c.clients == nil {
-        panic("Attempt to drop client but map is nil")
-    }
-
-    client := c.clients[*ip]
-    if client == expectedClient {
-        client.startClose()
-        c.clients[*ip] = nil
-    }
-}
-
-func (c *HttpClient) getClient(ip *netaddr.IP) *internalClient {
-    c.clientLock.Lock()
-    defer c.clientLock.Unlock()
-
-    if ip == nil {
-        if c.anyClient == nil {
-            c.anyClient = c.createClient(nil)
-        }
-        return c.anyClient
-    }
-
-    if c.clients == nil {
-        c.clients = make(map[netaddr.IP]*internalClient)
-    }
-
-    client := c.clients[*ip]
-    if client != nil {
-        return client
-    }
-
-    client = c.createClient(ip)
-    c.clients[*ip] = client
-    return client
 }
 
 func (c *HttpClient) createClient(ip *netaddr.IP) *internalClient {
@@ -251,18 +224,18 @@ func (r *HttpRequester) Dispose() {
     r.mu.Lock()
     defer r.mu.Unlock()
 
-    r.owner.dropClient(r.ip, r.client)
+    r.client.startClose()
     r.client = nil
 }
 
 func (r *HttpRequester) Do(req *http.Request) (*http.Response, error) {
     r.mu.Lock()
+    if r.client == nil {
+        r.client = r.owner.createClient(r.ip)
+    }
     c := r.client
     r.mu.Unlock()
 
-    if c == nil {
-        panic("Use of disposed requester")
-    }
     return c.do(req)
 }
 
