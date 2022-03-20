@@ -36,6 +36,7 @@ type DownloadTask struct {
     Fsync          bool
     Logger         *log.Logger
     Merger         merge.Merger
+    Progress       *Progress
     QueueMode      segments.QueueMode
     RetryThreshold uint
     SegmentDir     string
@@ -170,25 +171,10 @@ func (d *DownloadTask) run() {
         d.result.Error = err
         return
     }
+    segmentCount = 200
     d.result.TotalSegments = segmentCount
 
-    start := time.Now()
-    pbar := makeProgressBar(segmentCount, func(msg string, finished int, total int) {
-        progress := float64(finished) / float64(total)
-
-        if progress > 0.0 {
-            elapsed := time.Since(start)
-            etaSeconds := (1.0 / progress) * elapsed.Seconds()
-            eta := time.Duration(int64(etaSeconds)) * time.Second
-            var color string
-            if d.expire != nil && start.Add(eta).After(*d.expire) {
-                color = "\033[91m"
-            }
-            d.logger().Infof("|%s| %.2f%% %s(%d/%d, eta %v)", msg, progress * 100, color, finished, total, eta)
-        } else {
-            d.logger().Infof("|%s| %.2f%% (%d/%d, eta unknown)", msg, progress * 100, finished, total)
-        }
-    })
+    d.Progress.init(segmentCount, d.expire)
 
     segmentStatus := segments.Create(segmentCount, int(d.Threads), d.QueueMode)
     go d.Merger.Merge(segmentStatus)
@@ -201,7 +187,6 @@ func (d *DownloadTask) run() {
             d,
             &downloadGroup,
             segmentStatus,
-            pbar.done,
         )
     }
 
@@ -227,7 +212,6 @@ func downloadTask(
     task *DownloadTask,
     wg *sync.WaitGroup,
     status *segments.SegmentStatus,
-    done func(int),
 ) {
     defer wg.Done()
     queue := status.CreateQueue(int(threadNumber))
@@ -262,7 +246,7 @@ func downloadTask(
             task.logger().Warnf("Giving up segment %d", seg)
 
             status.Downloaded(seg, segments.SegmentResult { Ok: false })
-            done(seg)
+            task.Progress.done(false)
 
             seg = -1
             failCount = 0
@@ -271,9 +255,9 @@ func downloadTask(
 
         task.logger().Debugf("Current segment: %d", seg)
 
-        ok := downloadSegment(task, status, seg)
+        ok, cached := downloadSegment(task, status, seg)
         if ok {
-            done(seg)
+            task.Progress.done(cached)
 
             seg = -1
             failCount = 0
@@ -304,7 +288,7 @@ func segmentBaseFileName(task *DownloadTask, segment int) string {
     )
 }
 
-func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment int) bool {
+func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment int) (bool, bool) {
     segmentBasePath := segmentBaseFileName(task, segment)
     segmentDownloadPath := segmentBasePath + ".incomplete"
     segmentDonePath := segmentBasePath + ".done"
@@ -316,7 +300,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
             Ok: true,
             Filename: segmentDonePath,
         })
-        return true
+        return true, true
     }
 
     targetUrl := getSegUrl(task.Url, segment)
@@ -330,7 +314,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
     resp, err := doRequest(task, req)
     if err != nil {
         task.logger().Debugf("Request for segment %d failed with %v", segment, err)
-        return false
+        return false, false
     }
     defer resp.Body.Close()
 
@@ -343,39 +327,39 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
                 defer resp.Body.Close()
             }
         }
-        return false
+        return false, false
     }
 
     file, err := os.OpenFile(segmentDownloadPath, os.O_RDWR|os.O_CREATE, 0644)
     if err != nil {
         task.logger().Warnf("Unable to create temp file for segment %d: %v", segment, err)
-        return false
+        return false, false
     }
     defer file.Close()
 
     if _, err = io.Copy(file, resp.Body); err != nil {
         os.Remove(file.Name())
         task.logger().Errorf("Unable to write segment %d: %v", segment, err)
-        return false
+        return false, false
     }
 
     if task.Fsync {
         if err = file.Sync(); err != nil {
             os.Remove(file.Name())
             task.logger().Errorf("Unable to sync segment %d: %v", segment, err)
-            return false
+            return false, false
         }
     }
     if err = file.Close(); err != nil {
         os.Remove(file.Name())
         task.logger().Errorf("Unable to close file for segment %d: %v", segment, err)
-        return false
+        return false, false
     }
 
     if err = os.Rename(segmentDownloadPath, segmentDonePath); err != nil {
         os.Remove(segmentDownloadPath)
         task.logger().Errorf("Unable to rename segment %d: %v", segment, err)
-        return false
+        return false, false
     }
     task.logger().Debugf("Downloaded segment %d", segment)
 
@@ -384,7 +368,7 @@ func downloadSegment(task *DownloadTask, status *segments.SegmentStatus, segment
         Filename: segmentDonePath,
     })
 
-    return true
+    return true, false
 }
 
 func doRequest(task *DownloadTask, req *http.Request) (*http.Response, error) {

@@ -50,6 +50,15 @@ type Logger struct {
     tag         string
 }
 
+// used to track progress updates (which use \r to replace the previous one)
+// but if something got logged after the last update, a new line has to be printed
+var lastLine struct {
+    mu              sync.Mutex
+    buf             []byte
+    wasProgress     bool
+    size            int
+}
+
 var DefaultLogger *Logger
 
 func init() {
@@ -57,6 +66,43 @@ func init() {
         extraFrames: 1,
     }
     stdlog.SetFlags(stdlog.Ldate | stdlog.Lmicroseconds | stdlog.Lshortfile)
+    stdlog.SetOutput(stdLogProxy {})
+}
+
+func doWrite(isProgress bool, data []byte) (int, error) {
+    lastLine.mu.Lock()
+    defer lastLine.mu.Unlock()
+
+    p := lastLine.wasProgress
+    if p {
+        lastLine.buf = lastLine.buf[:0]
+
+        lastLine.buf = append(lastLine.buf, '\r')
+        for i := 0; i < lastLine.size; i ++ {
+            lastLine.buf = append(lastLine.buf, ' ')
+        }
+        lastLine.buf = append(lastLine.buf, '\r')
+    }
+
+    lastLine.wasProgress = isProgress
+    lastLine.size = len(data)
+
+    if p {
+        lastLine.buf = append(lastLine.buf, data...)
+        return os.Stderr.Write(lastLine.buf)
+    } else {
+        return os.Stderr.Write(data)
+    }
+}
+
+type stdLogProxy struct {}
+
+func (_ stdLogProxy) Write(p []byte) (int, error) {
+    return doWrite(false, p)
+}
+
+func Progress(line string) {
+    doWrite(true, []byte(line))
 }
 
 func SetDefaultLevel(level Level) {
@@ -107,7 +153,7 @@ func (l *Logger) output(level Level, calldepth int, s string) {
         l.buf = append(l.buf, '\n')
     }
     l.buf = append(l.buf, EndColor...)
-    os.Stderr.Write(l.buf)
+    doWrite(false, l.buf)
 }
 
 func (l *Logger) logf(level Level, format string, v ...interface{}) {

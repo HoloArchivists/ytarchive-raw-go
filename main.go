@@ -75,12 +75,15 @@ func main() {
         log.Fatalf("Unable to create muxer: %v", err)
     }
 
+    progress := download.NewProgress()
+
     audioTask := &download.DownloadTask {
         Client:         client,
         FailThreshold:  failThreshold,
         Fsync:          fsync,
         Logger:         log.New("audio.0"),
         Merger:         muxer.AudioMerger(),
+        Progress:       progress.Audio(),
         QueueMode:      queueMode,
         RetryThreshold: retryThreshold,
         SegmentDir:     tempDir,
@@ -93,6 +96,7 @@ func main() {
         Fsync:          fsync,
         Logger:         log.New("video.0"),
         Merger:         muxer.VideoMerger(),
+        Progress:       progress.Video(),
         QueueMode:      queueMode,
         RetryThreshold: retryThreshold,
         SegmentDir:     tempDir,
