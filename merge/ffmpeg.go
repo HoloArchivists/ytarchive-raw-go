@@ -41,10 +41,6 @@ func hasProtocol(name string) bool {
     return !bytes.Contains(output, []byte("Unknown protocol "))
 }
 
-func metadataField(name, value string) string {
-    return fmt.Sprintf(`%s="%s"`, name, strings.ReplaceAll(value, `"`, `''`))
-}
-
 func writeThumbnail(options *MuxerOptions) (string, error) {
     b64 := options.FregData.Metadata.Thumbnail
     if idx := strings.IndexByte(b64, ','); idx >= 0 {
@@ -94,19 +90,19 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     args = append(
         args,
         "-metadata",
-        metadataField("title", options.FregData.Metadata.Title),
+        "title=" + options.FregData.Metadata.Title,
         "-metadata",
-        metadataField("comment", options.FregData.Metadata.Description),
+        "comment=" + options.FregData.Metadata.Description,
         "-metadata",
-        metadataField("author", options.FregData.Metadata.ChannelName),
+        "author=" + options.FregData.Metadata.ChannelName,
         "-metadata",
-        metadataField("episode_id", options.FregData.Metadata.Id),
+        "episode_id=" + options.FregData.Metadata.Id,
         "-attach",
         thumbnail,
         "-metadata:s:t",
         "mimetype=image/jpeg",
         "-metadata:s:t",
-        metadataField("filename", "thumbnail.jpg"),
+        "filename=thumbnail.jpg",
     )
     args = append(args, options.FinalFile)
 
