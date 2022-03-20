@@ -116,39 +116,44 @@ func main() {
     log.SetWindowName(windowName)
     progress := download.NewProgress()
 
-    audioTask := &download.DownloadTask {
-        Client:         client,
-        FailThreshold:  failThreshold,
-        Fsync:          fsync,
-        Logger:         log.New("download.audio"),
-        Merger:         muxer.AudioMerger(),
-        Progress:       progress.Audio(),
-        QueueMode:      queueMode,
-        RequeueDelay:   requeueDelay,
-        RequeueFailed:  requeueFailed,
-        RequeueLast:    requeueLast,
-        RetryThreshold: retryThreshold,
-        SegmentCount:   segmentCount,
-        SegmentDir:     tempDir,
-        Threads:        threads,
-        Url:            fregData.BestAudio(preferredAudio),
+    var audioTask, videoTask *download.DownloadTask
+    if !onlyVideo {
+        audioTask = &download.DownloadTask {
+            Client:         client,
+            FailThreshold:  failThreshold,
+            Fsync:          fsync,
+            Logger:         log.New("download.audio"),
+            Merger:         muxer.AudioMerger(),
+            Progress:       progress.Audio(),
+            QueueMode:      queueMode,
+            RequeueDelay:   requeueDelay,
+            RequeueFailed:  requeueFailed,
+            RequeueLast:    requeueLast,
+            RetryThreshold: retryThreshold,
+            SegmentCount:   segmentCount,
+            SegmentDir:     tempDir,
+            Threads:        threads,
+            Url:            fregData.BestAudio(preferredAudio),
+        }
     }
-    videoTask := &download.DownloadTask {
-        Client:         client,
-        FailThreshold:  failThreshold,
-        Fsync:          fsync,
-        Logger:         log.New("download.video"),
-        Merger:         muxer.VideoMerger(),
-        Progress:       progress.Video(),
-        QueueMode:      queueMode,
-        RequeueDelay:   requeueDelay,
-        RequeueFailed:  requeueFailed,
-        RequeueLast:    requeueLast,
-        RetryThreshold: retryThreshold,
-        SegmentCount:   segmentCount,
-        SegmentDir:     tempDir,
-        Threads:        threads,
-        Url:            fregData.BestVideo(preferredVideo),
+    if !onlyAudio {
+        videoTask = &download.DownloadTask {
+            Client:         client,
+            FailThreshold:  failThreshold,
+            Fsync:          fsync,
+            Logger:         log.New("download.video"),
+            Merger:         muxer.VideoMerger(),
+            Progress:       progress.Video(),
+            QueueMode:      queueMode,
+            RequeueDelay:   requeueDelay,
+            RequeueFailed:  requeueFailed,
+            RequeueLast:    requeueLast,
+            RetryThreshold: retryThreshold,
+            SegmentCount:   segmentCount,
+            SegmentDir:     tempDir,
+            Threads:        threads,
+            Url:            fregData.BestVideo(preferredVideo),
+        }
     }
 
     if onlyAudio {
