@@ -49,7 +49,7 @@ func parseVersion(version string) ([3]int, bool) {
 }
 
 func versionCheck() (string, bool) {
-    resp, err := http.Get("https://api.github.com/repos/notpeko/ytarchive-raw-go/releases/latest")
+    resp, err := http.Get("https://api.github.com/repos/HoloArchivists/ytarchive-raw-go/releases/latest")
     if err != nil {
         log.Warnf("Unable to fetch latest release: %v", err)
         return "", false
