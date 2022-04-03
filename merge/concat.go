@@ -6,8 +6,8 @@ import (
     "os"
     "path/filepath"
 
-    "github.com/notpeko/ytarchive-raw-go/download/segments"
-    "github.com/notpeko/ytarchive-raw-go/util"
+    "github.com/HoloArchivists/ytarchive-raw-go/download/segments"
+    "github.com/HoloArchivists/ytarchive-raw-go/util"
 )
 
 var _ Muxer = &ConcatMuxer {}

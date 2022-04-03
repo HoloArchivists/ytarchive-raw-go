@@ -6,7 +6,7 @@ import (
     "net"
     "os"
 
-    "github.com/notpeko/ytarchive-raw-go/download/segments"
+    "github.com/HoloArchivists/ytarchive-raw-go/download/segments"
 )
 
 var _ Muxer = &TcpMuxer {}

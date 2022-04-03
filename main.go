@@ -8,10 +8,10 @@ import (
 
     "github.com/mattn/go-colorable"
 
-    "github.com/notpeko/ytarchive-raw-go/download"
-    "github.com/notpeko/ytarchive-raw-go/log"
-    "github.com/notpeko/ytarchive-raw-go/merge"
-    "github.com/notpeko/ytarchive-raw-go/util"
+    "github.com/HoloArchivists/ytarchive-raw-go/download"
+    "github.com/HoloArchivists/ytarchive-raw-go/log"
+    "github.com/HoloArchivists/ytarchive-raw-go/merge"
+    "github.com/HoloArchivists/ytarchive-raw-go/util"
 )
 
 func printResult(logger *log.Logger, res *download.DownloadResult) {

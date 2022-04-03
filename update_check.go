@@ -9,7 +9,7 @@ import (
     "strconv"
     "strings"
 
-    "github.com/notpeko/ytarchive-raw-go/log"
+    "github.com/HoloArchivists/ytarchive-raw-go/log"
 )
 
 type githubReleaseAsset struct {

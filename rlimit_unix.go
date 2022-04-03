@@ -6,7 +6,7 @@ package main
 import (
     "syscall"
 
-    "github.com/notpeko/ytarchive-raw-go/log"
+    "github.com/HoloArchivists/ytarchive-raw-go/log"
 )
 
 func increaseOpenFileLimit() {

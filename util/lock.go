@@ -5,7 +5,7 @@ import (
 
     "github.com/gofrs/flock"
 
-    "github.com/notpeko/ytarchive-raw-go/log"
+    "github.com/HoloArchivists/ytarchive-raw-go/log"
 )
 
 func LockFile(path string, printFailureMessage func()) func() {

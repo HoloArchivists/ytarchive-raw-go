@@ -10,10 +10,10 @@ import (
     "sync"
     "time"
 
-    "github.com/notpeko/ytarchive-raw-go/download/segments"
-    "github.com/notpeko/ytarchive-raw-go/log"
-    "github.com/notpeko/ytarchive-raw-go/merge"
-    "github.com/notpeko/ytarchive-raw-go/util"
+    "github.com/HoloArchivists/ytarchive-raw-go/download/segments"
+    "github.com/HoloArchivists/ytarchive-raw-go/log"
+    "github.com/HoloArchivists/ytarchive-raw-go/merge"
+    "github.com/HoloArchivists/ytarchive-raw-go/util"
 )
 
 

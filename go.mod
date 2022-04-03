@@ -1,4 +1,4 @@
-module github.com/notpeko/ytarchive-raw-go
+module github.com/HoloArchivists/ytarchive-raw-go
 
 go 1.17
 
