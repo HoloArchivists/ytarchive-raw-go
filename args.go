@@ -56,6 +56,7 @@ var (
     requeueLast    bool
     retryThreshold uint
     segmentCount   uint
+    startSegment   uint
     tempDir        string
     threads        uint
     useQuic        bool
@@ -210,7 +211,12 @@ Options:
                 Failure includes error responses from youtube and connection
                 failures after 'connect-retries' fails.
 
-                Default is 20
+                Default is 20.
+
+        --start-segment NUMBER
+                Starting segment for the download, to clip parts of a stream.
+
+                Default is 0.
 
         --segment-count COUNT
                 Sets how many segments should be downloaded. This is intended
@@ -395,6 +401,8 @@ func init() {
     flagSet.UintVar(&failThreshold, "retries", download.DefaultFailThreshold, "Amount of times to retry downloading segments on failure.")
 
     flagSet.UintVar(&segmentCount, "segment-count", 0, "How many segments to download.")
+
+    flagSet.UintVar(&startSegment, "start-segment", 0, "Starting segment.")
 
     flagSet.StringVar(&tempDir, "temp-dir", "", "Directory to store temporary files. A randomly-named one will be created if empty.")
 

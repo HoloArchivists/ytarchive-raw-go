@@ -132,6 +132,7 @@ func main() {
             RetryThreshold: retryThreshold,
             SegmentCount:   segmentCount,
             SegmentDir:     tempDir,
+            StartSegment:   startSegment,
             Threads:        threads,
             Url:            fregData.BestAudio(preferredAudio),
         }
@@ -151,6 +152,7 @@ func main() {
             RetryThreshold: retryThreshold,
             SegmentCount:   segmentCount,
             SegmentDir:     tempDir,
+            StartSegment:   startSegment,
             Threads:        threads,
             Url:            fregData.BestVideo(preferredVideo),
         }

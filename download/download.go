@@ -40,6 +40,7 @@ type DownloadTask struct {
     RetryThreshold uint
     SegmentCount   uint
     SegmentDir     string
+    StartSegment   uint
     Threads        uint
     Url            string
     wg             sync.WaitGroup
@@ -294,7 +295,7 @@ func downloadSegment(task *DownloadTask, requester *util.HttpRequester, status *
         return true, true
     }
 
-    targetUrl := task.parsedUrl.SegmentURL(segment)
+    targetUrl := task.parsedUrl.SegmentURL(task.StartSegment + uint(segment))
 
     req, err := http.NewRequest("GET", targetUrl, nil)
     if err != nil {

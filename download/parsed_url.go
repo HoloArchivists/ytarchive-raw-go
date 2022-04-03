@@ -118,7 +118,7 @@ func parseDownloadURL(rawUrl string) (*parsedURL, error) {
     return p, nil
 }
 
-func (p *parsedURL) SegmentURL(seg int) string {
+func (p *parsedURL) SegmentURL(seg uint) string {
     switch(p.typ) {
     case urlTypeQuery:
         url, err := url.Parse(p.raw)
