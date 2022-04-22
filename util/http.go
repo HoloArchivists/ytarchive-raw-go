@@ -2,6 +2,7 @@ package util
 
 import (
     "bufio"
+    "context"
     "crypto/tls"
     "fmt"
     "io"
@@ -175,7 +176,7 @@ func (c *HttpClient) createClient(ip *netaddr.IP) *internalClient {
     if c.cfg.UseQuic {
         t := &http3.RoundTripper {}
         if ip != nil {
-            t.Dial = func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error) {
+            t.Dial = func(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
                 if ip.Is6() {
                     network = "udp6"
                 } else {

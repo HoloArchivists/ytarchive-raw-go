@@ -20,7 +20,7 @@ import (
 const (
 	VersionMajor = 1
 	VersionMinor = 7
-	VersionPatch = 1
+	VersionPatch = 2
 )
 
 var Commit string

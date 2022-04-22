@@ -47,6 +47,8 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     args := make([]string, 0)
     args = append(
         args,
+        "-loglevel",
+        "level+40",
         "-y",
     )
     if audio != "" {
@@ -83,9 +85,10 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     args = append(args, options.FinalFileBase + ".mkv")
 
     cmd := ffmpeg(options.Logger, args...)
+    logFile := filepath.Join(options.TempDir, fmt.Sprintf("ffmpeg-%s.out", options.FregData.Metadata.Id))
     cmd.Env = append(
         os.Environ(),
-        fmt.Sprintf("FFREPORT=file='%s':level=32", filepath.Join(options.TempDir, fmt.Sprintf("ffmpeg-%s.out", options.FregData.Metadata.Id))),
+        fmt.Sprintf("FFREPORT=file='%s'", logFile),
     )
     cmd.Stdin = nil
 
@@ -95,6 +98,7 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
 
     if err := cmd.Run(); err != nil {
         printOutput(options.Logger, &stderr, false)
+        options.Logger.Errorf("Check the FFmpeg log file at '%s'", logFile)
         return err
     }
     printOutput(options.Logger, &stderr, true)
@@ -119,15 +123,16 @@ func printOutput(logger *log.Logger, stderr *bytes.Buffer, success bool) {
         }
     }
 
-    if len(warnings) > 0 {
-        if success {
-            logger.Warn("FFmpeg succeeded with warnings")
-        } else {
-            logger.Error("FFmpeg failed")
+    if success {
+        if len(warnings) == 0 {
+            return
         }
-        for _, v := range warnings {
-            logger.Warn(v)
-        }
+        logger.Warn("FFmpeg succeeded with warnings")
+    } else {
+        logger.Error("FFmpeg failed")
+    }
+    for _, v := range warnings {
+        logger.Warn(v)
     }
 }
 
@@ -138,7 +143,25 @@ var ignoredWarnings = []string {
     "Thread message queue blocking;",
 }
 
+var wantedLevels = []string {
+    "[panic]",
+    "[fatal]",
+    "[error]",
+    "[warning]",
+}
+
 func ignoreWarning(line string) bool {
+    var wantedLevel bool
+    for _, v := range wantedLevels {
+        if strings.Contains(line, v) {
+            wantedLevel = true
+            break
+        }
+    }
+    if !wantedLevel {
+        return true
+    }
+
     for _, v := range ignoredWarnings {
         if strings.Contains(line, v) {
             return true
