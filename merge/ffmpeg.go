@@ -66,6 +66,8 @@ func muxFfmpeg(options *MuxerOptions, audio, video string) error {
     args = append(
         args,
         "-metadata",
+        "date=" + options.FregData.Metadata.StartTimestamp.Format("20060201"),
+        "-metadata",
         "title=" + options.FregData.Metadata.Title,
         "-metadata",
         "comment=" + options.FregData.Metadata.Description,
